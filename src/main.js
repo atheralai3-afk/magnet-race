@@ -14,7 +14,8 @@ import { homeScreen, passSetupScreen, nameScreen, lobbyScreen, searchingScreen, 
 const canvas = document.getElementById('game'), ui = document.getElementById('ui');
 const track = new Track(classic);
 const renderer = new Renderer(canvas, track);
-const clientId = (() => { let id = sessionStorage.getItem('mr.id'); if (!id) { id = 'u' + Math.random().toString(36).slice(2, 10); sessionStorage.setItem('mr.id', id); } return id; })();
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+const clientId = (() => { let id = null; try { id = sessionStorage.getItem('mr.id'); } catch {} if (!id) { id = 'u' + Math.random().toString(36).slice(2, 10); try { sessionStorage.setItem('mr.id', id); } catch {} } return id; })();
 const online = isOnline(config);
 const LAPS = Math.max(1, Math.min(5, +new URLSearchParams(location.search).get('laps') || 3)); // ?laps=1 for quick demos
 
@@ -29,7 +30,7 @@ function show(el) { clear(ui); app.screen = el; if (el) ui.append(el); }
 function home() {
   stopGame();
   show(homeScreen({ online,
-    onSolo: () => startLocal([{ id: 'p1', name: localStorage.getItem('mr.name') || 'You', color: PLAYER_COLORS[0] }]),
+    onSolo: () => startLocal([{ id: 'p1', name: store.get('mr.name') || 'You', color: PLAYER_COLORS[0] }]),
     onPass: () => show(passSetupScreen({ onStart: startLocal, onBack: home })),
     onCreateRoom: () => show(nameScreen({ title: 'Create Private Room', sub: 'You will get a code to share with friends.', cta: 'Create room', onGo: n => openRoom({ name: n, isHost: true }), onBack: home })),
     onJoinRoom: code => show(nameScreen({ title: 'Join ' + code, sub: 'Enter your name to join the room.', cta: 'Join room', onGo: n => openRoom({ name: n, code }), onBack: home })),

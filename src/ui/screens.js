@@ -35,10 +35,10 @@ export function passSetupScreen({ onStart, onBack }) {
 }
 
 export function nameScreen({ title, sub, cta, onGo, onBack }) {
-  let name = localStorage.getItem('mr.name') || '';
+  let name = ''; try { name = localStorage.getItem('mr.name') || ''; } catch {}
   const input = h('input.field', { placeholder: 'Your name', value: name, maxLength: 14, oninput: e => name = e.target.value });
   return h('div.screen', h('div.glass.card', h('h2.disp', title), h('div.sub', sub),
-    h('div.stack', input, h('button.btn.green', { onclick: () => { const n = name.trim() || 'Player'; localStorage.setItem('mr.name', n); onGo(n); } }, h('div.ic', ICON.duel), h('div', h('div.t1', cta))),
+    h('div.stack', input, h('button.btn.green', { onclick: () => { const n = name.trim() || 'Player'; try { localStorage.setItem('mr.name', n); } catch {} onGo(n); } }, h('div.ic', ICON.duel), h('div', h('div.t1', cta))),
       h('button.btn.sm', { onclick: onBack }, h('span.t1', ICON.back + ' Back')))));
 }
 
