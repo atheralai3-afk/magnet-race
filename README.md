@@ -20,6 +20,9 @@ Press on the track to put the magnet down, move it to pull the car, and lift it 
 - **Physics view** in the race: live field lines plus force arrows in newtons, and a readout of pull, friction, speed and gap.
 - Daily challenge and stats saved on this device, sounds (with a mute button), vibration on phones, and installable as an app (Add to Home Screen) that works offline.
 
+## One-file version
+`python3 tools/build-single.py` packs everything into `dist/magnet-race.html`: a single file you can double-click, email or put on a USB stick. Solo, Pass & Play, Lab and Pit Stop all work offline.
+
 ## Run locally
 ES modules don't load from `file://`, so serve the folder:
 ```
