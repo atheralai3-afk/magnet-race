@@ -126,7 +126,7 @@ export function labScreen() {
     c.beginPath(); c.moveTo(x2, y2); c.lineTo(x2 - Math.cos(a - .5) * 10, y2 - Math.sin(a - .5) * 10); c.lineTo(x2 - Math.cos(a + .5) * 10, y2 - Math.sin(a + .5) * 10); c.fill();
     c.font = '700 12px Inter, system-ui'; c.textAlign = 'center'; c.fillText(label, (x1 + x2) / 2, y1 + side * 20 + (side > 0 ? 6 : 0)); c.restore();
   }
-  function rr(c, x, y, w, h2, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h2, r); c.arcTo(x + w, y + h2, x, y + h2, r); c.arcTo(x, y + h2, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+  function rr(c, x, y, w, h2, r) { r = Math.max(0, Math.min(r, Math.abs(w) / 2, Math.abs(h2) / 2)); c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h2, r); c.arcTo(x + w, y + h2, x, y + h2, r); c.arcTo(x, y + h2, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
   // ------------- loop
   let last = performance.now(), raf;
   function loop(now) {

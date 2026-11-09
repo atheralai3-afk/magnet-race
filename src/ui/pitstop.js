@@ -119,7 +119,7 @@ export function pitStopSheet({ onDone }) {
     if (S.charge > .02 && S.charge < .12 && S.t > 1) { ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = '600 13px Inter, system-ui'; ctx.textAlign = 'center'; ctx.fillText('Keep rubbing…', b.x, b.y - br * 1.35); }
     for (const s of S.sparks) { ctx.fillStyle = `rgba(255,224,102,${s.life * 2.5})`; ctx.beginPath(); ctx.arc(s.x, s.y - (0.4 - s.life) * 60, 3, 0, 7); ctx.fill(); }
   }
-  function rr(x, y, w, h2, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h2, r); ctx.arcTo(x + w, y + h2, x, y + h2, r); ctx.arcTo(x, y + h2, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+  function rr(x, y, w, h2, r) { r = Math.max(0, Math.min(r, Math.abs(w) / 2, Math.abs(h2) / 2)); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h2, r); ctx.arcTo(x + w, y + h2, x, y + h2, r); ctx.arcTo(x, y + h2, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 
   let last = performance.now(), raf;
   function loop(now) { const dt = Math.min(.05, (now - last) / 1000); last = now; if (!W) layout(); step(dt); draw(); if (d.isConnected) raf = requestAnimationFrame(loop); }

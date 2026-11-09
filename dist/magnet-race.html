@@ -1203,14 +1203,17 @@ class Renderer {
   constructor(canvas, track) {
     this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.track = track;
     this.physicsView = true; this.dpr = 1; this.resize();
+    // follow the canvas size itself, not just window resizes (panels, rotation, split screen)
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { const r = canvas.getBoundingClientRect(); if (Math.abs(r.width - this.w) > .5 || Math.abs(r.height - this.h) > .5) this.resize(); }).observe(canvas);
   }
   resize() {
     const r = this.canvas.getBoundingClientRect();
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     this.canvas.width = Math.max(1, Math.round(r.width * this.dpr)); this.canvas.height = Math.max(1, Math.round(r.height * this.dpr));
-    this.w = r.width; this.h = r.height;
-    const b = this.track.board, pad = 18;
-    this.scale = Math.min((this.w - pad * 2) / b.w, (this.h - pad * 2) / b.h);
+    this.w = Math.max(1, r.width); this.h = Math.max(1, r.height);
+    const b = this.track.board, pad = Math.min(18, this.w * .04, this.h * .04);
+    // never negative, even while the window is still tiny (e.g. a side panel opening)
+    this.scale = Math.max(1, Math.min((this.w - pad * 2) / b.w, (this.h - pad * 2) / b.h));
     this.ox = (this.w - b.w * this.scale) / 2 - b.x * this.scale; this.oy = (this.h - b.h * this.scale) / 2 - b.y * this.scale;
     this._buildPaths();
   }
@@ -1357,7 +1360,7 @@ class Renderer {
     const tw = c.measureText(label).width + 14, lx = (x1 + x2) / 2 + -Math.sin(a) * 16 * side, ly = (y1 + y2) / 2 + Math.cos(a) * 16 * side;
     c.fillStyle = 'rgba(20,18,58,.75)'; this._rr(lx - tw / 2, ly - 10, tw, 20, 10); c.fill(); c.fillStyle = color; c.fillText(label, lx, ly + .5); c.restore();
   }
-  _rr(x, y, w, h, r) { const c = this.ctx; c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+  _rr(x, y, w, h, r) { r = Math.max(0, Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2)); const c = this.ctx; c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
   _rrFill(x, y, w, h, r) { this._rr(x, y, w, h, r); this.ctx.fill(); }
 }
 
@@ -2281,7 +2284,7 @@ function pitStopSheet({ onDone }) {
     if (S.charge > .02 && S.charge < .12 && S.t > 1) { ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = '600 13px Inter, system-ui'; ctx.textAlign = 'center'; ctx.fillText('Keep rubbing…', b.x, b.y - br * 1.35); }
     for (const s of S.sparks) { ctx.fillStyle = `rgba(255,224,102,${s.life * 2.5})`; ctx.beginPath(); ctx.arc(s.x, s.y - (0.4 - s.life) * 60, 3, 0, 7); ctx.fill(); }
   }
-  function rr(x, y, w, h2, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h2, r); ctx.arcTo(x + w, y + h2, x, y + h2, r); ctx.arcTo(x, y + h2, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+  function rr(x, y, w, h2, r) { r = Math.max(0, Math.min(r, Math.abs(w) / 2, Math.abs(h2) / 2)); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h2, r); ctx.arcTo(x + w, y + h2, x, y + h2, r); ctx.arcTo(x, y + h2, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 
   let last = performance.now(), raf;
   function loop(now) { const dt = Math.min(.05, (now - last) / 1000); last = now; if (!W) layout(); step(dt); draw(); if (d.isConnected) raf = requestAnimationFrame(loop); }
@@ -2447,7 +2450,7 @@ function labScreen() {
     c.beginPath(); c.moveTo(x2, y2); c.lineTo(x2 - Math.cos(a - .5) * 10, y2 - Math.sin(a - .5) * 10); c.lineTo(x2 - Math.cos(a + .5) * 10, y2 - Math.sin(a + .5) * 10); c.fill();
     c.font = '700 12px Inter, system-ui'; c.textAlign = 'center'; c.fillText(label, (x1 + x2) / 2, y1 + side * 20 + (side > 0 ? 6 : 0)); c.restore();
   }
-  function rr(c, x, y, w, h2, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h2, r); c.arcTo(x + w, y + h2, x, y + h2, r); c.arcTo(x, y + h2, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+  function rr(c, x, y, w, h2, r) { r = Math.max(0, Math.min(r, Math.abs(w) / 2, Math.abs(h2) / 2)); c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h2, r); c.arcTo(x + w, y + h2, x, y + h2, r); c.arcTo(x, y + h2, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
   // ------------- loop
   let last = performance.now(), raf;
   function loop(now) {
@@ -2549,7 +2552,7 @@ const demo = (() => {
 function menuLoop(now) {
   if (app.state === 'race') return;
   const dt = Math.min(0.05, (now - app.last) / 1000); app.last = now;
-  if (!document.hidden) { demo.step(dt); renderer.draw(demo.snap(), { ids: [] }); }
+  if (!document.hidden) { try { demo.step(dt); renderer.draw(demo.snap(), { ids: [] }); } catch (e) { console.warn(e); } }
   app.raf = requestAnimationFrame(menuLoop);
 }
 
@@ -2682,6 +2685,7 @@ function inputPlayerId() {
 }
 function frame(now) {
   const m = app.match; if (!m || app.state !== 'race') return;
+  app.raf = requestAnimationFrame(frame); // schedule first so an error can never stop the game
   const dt = Math.min(0.05, (now - app.last) / 1000); app.last = now;
   const id = inputPlayerId();
   const blocked = !!(app.q || app.pit || ui.querySelector('.dim:not(.out)'));
@@ -2691,13 +2695,12 @@ function frame(now) {
   for (const ev of events) handleEvent(ev);
   if (!app.match) return; // the game ended inside an event handler
   const snap = m.snapshot();
-  renderer.draw(snap, { ids: [...app.inputIds] });
+  try { renderer.draw(snap, { ids: [...app.inputIds] }); } catch (e) { console.warn(e); renderer.resize(); }
   const shownId = id || snap.currentId || [...app.inputIds][0] || snap.players[0].id;
   app.hud.update(snap, shownId, track);
   if (renderer.w !== app.placedW || renderer.h !== app.placedH) { app.placedW = renderer.w; app.placedH = renderer.h; app.hud.place(renderer); }
   const car = id ? m.car(id) : null;
   sound.hum(app.magnet.active && car ? Math.min(1, car.pullN / 0.6) : 0);
-  app.raf = requestAnimationFrame(frame);
 }
 function promptIfNeeded() {
   const m = app.match; if (!m || m.mode !== 'turns' || m.phase !== 'roll') return;

@@ -55,7 +55,7 @@ const demo = (() => {
 function menuLoop(now) {
   if (app.state === 'race') return;
   const dt = Math.min(0.05, (now - app.last) / 1000); app.last = now;
-  if (!document.hidden) { demo.step(dt); renderer.draw(demo.snap(), { ids: [] }); }
+  if (!document.hidden) { try { demo.step(dt); renderer.draw(demo.snap(), { ids: [] }); } catch (e) { console.warn(e); } }
   app.raf = requestAnimationFrame(menuLoop);
 }
 
@@ -188,6 +188,7 @@ function inputPlayerId() {
 }
 function frame(now) {
   const m = app.match; if (!m || app.state !== 'race') return;
+  app.raf = requestAnimationFrame(frame); // schedule first so an error can never stop the game
   const dt = Math.min(0.05, (now - app.last) / 1000); app.last = now;
   const id = inputPlayerId();
   const blocked = !!(app.q || app.pit || ui.querySelector('.dim:not(.out)'));
@@ -197,13 +198,12 @@ function frame(now) {
   for (const ev of events) handleEvent(ev);
   if (!app.match) return; // the game ended inside an event handler
   const snap = m.snapshot();
-  renderer.draw(snap, { ids: [...app.inputIds] });
+  try { renderer.draw(snap, { ids: [...app.inputIds] }); } catch (e) { console.warn(e); renderer.resize(); }
   const shownId = id || snap.currentId || [...app.inputIds][0] || snap.players[0].id;
   app.hud.update(snap, shownId, track);
   if (renderer.w !== app.placedW || renderer.h !== app.placedH) { app.placedW = renderer.w; app.placedH = renderer.h; app.hud.place(renderer); }
   const car = id ? m.car(id) : null;
   sound.hum(app.magnet.active && car ? Math.min(1, car.pullN / 0.6) : 0);
-  app.raf = requestAnimationFrame(frame);
 }
 function promptIfNeeded() {
   const m = app.match; if (!m || m.mode !== 'turns' || m.phase !== 'roll') return;

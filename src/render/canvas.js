@@ -7,14 +7,17 @@ export class Renderer {
   constructor(canvas, track) {
     this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.track = track;
     this.physicsView = true; this.dpr = 1; this.resize();
+    // follow the canvas size itself, not just window resizes (panels, rotation, split screen)
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { const r = canvas.getBoundingClientRect(); if (Math.abs(r.width - this.w) > .5 || Math.abs(r.height - this.h) > .5) this.resize(); }).observe(canvas);
   }
   resize() {
     const r = this.canvas.getBoundingClientRect();
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     this.canvas.width = Math.max(1, Math.round(r.width * this.dpr)); this.canvas.height = Math.max(1, Math.round(r.height * this.dpr));
-    this.w = r.width; this.h = r.height;
-    const b = this.track.board, pad = 18;
-    this.scale = Math.min((this.w - pad * 2) / b.w, (this.h - pad * 2) / b.h);
+    this.w = Math.max(1, r.width); this.h = Math.max(1, r.height);
+    const b = this.track.board, pad = Math.min(18, this.w * .04, this.h * .04);
+    // never negative, even while the window is still tiny (e.g. a side panel opening)
+    this.scale = Math.max(1, Math.min((this.w - pad * 2) / b.w, (this.h - pad * 2) / b.h));
     this.ox = (this.w - b.w * this.scale) / 2 - b.x * this.scale; this.oy = (this.h - b.h * this.scale) / 2 - b.y * this.scale;
     this._buildPaths();
   }
@@ -161,6 +164,6 @@ export class Renderer {
     const tw = c.measureText(label).width + 14, lx = (x1 + x2) / 2 + -Math.sin(a) * 16 * side, ly = (y1 + y2) / 2 + Math.cos(a) * 16 * side;
     c.fillStyle = 'rgba(20,18,58,.75)'; this._rr(lx - tw / 2, ly - 10, tw, 20, 10); c.fill(); c.fillStyle = color; c.fillText(label, lx, ly + .5); c.restore();
   }
-  _rr(x, y, w, h, r) { const c = this.ctx; c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+  _rr(x, y, w, h, r) { r = Math.max(0, Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2)); const c = this.ctx; c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
   _rrFill(x, y, w, h, r) { this._rr(x, y, w, h, r); this.ctx.fill(); }
 }
