@@ -1,0 +1,337 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..900&display=swap" rel="stylesheet">
+<title>Magnet Race · Home (interactive)</title>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; font-family: Inter, -apple-system, system-ui, sans-serif; color: #fff; background: #14123A; }
+.bg { position: absolute; inset: 0; }
+.bg svg { width: 100%; height: 100%; display: block; }
+.bg.blur { filter: blur(7px) saturate(1.15); transform: scale(1.06); }
+.dim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,8,40,.25), rgba(10,8,40,.55)); }
+.glass { position: absolute; border-radius: 30px; color: #fff;
+  background: linear-gradient(140deg, rgba(255,255,255,.26) 0%, rgba(255,255,255,.10) 45%, rgba(255,255,255,.14) 100%);
+  backdrop-filter: blur(26px) saturate(185%); -webkit-backdrop-filter: blur(26px) saturate(185%);
+  border: 1px solid rgba(255,255,255,.38);
+  box-shadow: inset 0 1.5px 1px rgba(255,255,255,.75), inset 0 -1px 1px rgba(255,255,255,.18), inset 0 0 24px rgba(255,255,255,.07), 0 24px 60px rgba(4,2,30,.38); }
+.glass::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(120% 60% at 15% -10%, rgba(255,255,255,.38), rgba(255,255,255,0) 55%); }
+.glass.flow { position: relative; }
+.pill { border-radius: 999px; }
+.row { display: flex; align-items: center; }
+.disp { font-family: "Inter Display", "Inter", -apple-system, system-ui, sans-serif; }
+.sub { color: rgba(255,255,255,.72); }
+.btn { position: relative; border-radius: 22px; padding: 18px 22px; display: flex; align-items: center; gap: 16px; border: 1px solid rgba(255,255,255,.4);
+  box-shadow: inset 0 1.5px 1px rgba(255,255,255,.7), inset 0 -2px 6px rgba(0,0,0,.12), 0 12px 30px rgba(0,0,0,.25); overflow: hidden; }
+.btn::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,.35), rgba(255,255,255,0) 55%); pointer-events: none; }
+.ic { flex: none; width: 52px; height: 52px; border-radius: 16px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.22);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.7); }
+.ic svg { width: 28px; height: 28px; }
+.t1 { font-family: "Inter Display", "Inter", -apple-system, system-ui, sans-serif; font-weight: 700; font-size: 22px; letter-spacing: -.2px; }
+.t2 { font-size: 14px; color: rgba(255,255,255,.8); margin-top: 2px; }
+.chev { margin-left: auto; opacity: .8; }
+.green { background: linear-gradient(135deg, rgba(52,199,89,.85), rgba(30,160,80,.75)); }
+.blue { background: linear-gradient(135deg, rgba(10,132,255,.8), rgba(94,92,230,.7)); }
+.clear { background: rgba(255,255,255,.12); }
+.orange { background: linear-gradient(135deg, rgba(255,149,0,.9), rgba(255,110,0,.8)); }
+.avatar { border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: "Inter Display", "Inter", -apple-system, system-ui, sans-serif; font-weight: 800; box-shadow: inset 0 1px 1px rgba(255,255,255,.6), 0 4px 10px rgba(0,0,0,.25); }
+.switch { width: 58px; height: 34px; border-radius: 99px; background: #34C759; position: relative; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }
+.switch::after { content: ""; position: absolute; right: 3px; top: 3px; width: 28px; height: 28px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+
+body { background:#14123A; display:flex; align-items:center; justify-content:center; }
+#stage { position:relative; width:1440px; height:900px; flex:none; transform-origin:center; overflow:hidden; border-radius:0; }
+#bgwrap { position:absolute; inset:-30px; will-change:transform; }
+#bgwrap svg { width:100%; height:100%; display:block; filter: blur(7px) saturate(1.15); }
+#ui { position:absolute; inset:0; transition: transform .6s cubic-bezier(.32,.72,0,1), filter .6s; }
+body.sheet-open #ui { transform: scale(.94); filter: blur(6px) brightness(.8); }
+button { font:inherit; color:inherit; background:none; border:0; cursor:pointer; text-align:left; }
+.btn { width:100%; will-change:transform; transform-style:preserve-3d; transition: background .25s, box-shadow .3s; }
+.btn .txt { flex:1; }
+.btn:hover { box-shadow: inset 0 1.5px 1px rgba(255,255,255,.85), inset 0 -2px 6px rgba(0,0,0,.1), 0 18px 40px rgba(0,0,0,.32); }
+.btn.clear:hover { background: rgba(255,255,255,.2); }
+.btn .chev { transition: transform .45s cubic-bezier(.34,1.56,.64,1); }
+.btn:hover .chev { transform: translateX(5px); }
+.sheen { position:absolute; inset:0; border-radius:inherit; pointer-events:none; opacity:0; transition:opacity .3s;
+  background: radial-gradient(220px circle at var(--hx,50%) var(--hy,50%), rgba(255,255,255,.42), rgba(255,255,255,0) 60%); mix-blend-mode: soft-light; }
+.mag:hover .sheen, .panel:hover > .sheen { opacity:1; }
+.ripple { position:absolute; border-radius:50%; pointer-events:none; transform:translate(-50%,-50%) scale(0); width:30px; height:30px;
+  background: radial-gradient(circle, rgba(255,255,255,.7), rgba(255,255,255,0) 70%); animation: rip .7s cubic-bezier(.2,.8,.2,1) forwards; }
+@keyframes rip { to { transform:translate(-50%,-50%) scale(26); opacity:0; } }
+.panel { will-change:transform; }
+.lrow { display:flex; align-items:center; gap:14px; margin:6px -12px 0; padding:8px 12px; border-radius:16px; transition: background .25s, transform .45s cubic-bezier(.34,1.56,.64,1); }
+.lrow:hover { background: rgba(255,255,255,.14); transform: scale(1.02); }
+.lrow .rank { width:22px; font-weight:800; font-size:17px; opacity:.8; } .lrow .nm { font-weight:600; font-size:16px; }
+.lrow .tier { font-size:14px; margin-left:8px; } .lrow .pts { margin-left:auto; font-weight:800; font-size:17px; }
+#tabbar { position:absolute; left:50%; bottom:30px; transform:translateX(-50%); padding:8px; display:flex; gap:6px; border-radius:999px; }
+.tab { position:relative; z-index:2; display:flex; align-items:center; gap:8px; padding:12px 22px; border-radius:999px; opacity:.72; transition: opacity .3s, transform .4s cubic-bezier(.34,1.56,.64,1); }
+.tab span { font-weight:600; font-size:15px; } .tab.on, .tab:hover { opacity:1; } .tab:active { transform: scale(.92); }
+#lens { position:absolute; z-index:1; top:8px; height:calc(100% - 16px); border-radius:999px; pointer-events:none;
+  background: rgba(255,255,255,.26); box-shadow: inset 0 1.5px 1px rgba(255,255,255,.8), inset 0 -1px 2px rgba(255,255,255,.2), 0 6px 18px rgba(0,0,0,.18);
+  backdrop-filter: blur(2px) saturate(160%) brightness(1.1); }
+.press { animation: none; }
+#count { display:inline-block; }
+.live { width:9px; height:9px; border-radius:50%; background:#34C759; box-shadow:0 0 10px #34C759; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow:0 0 0 6px rgba(52,199,89,0), 0 0 14px #34C759; transform: scale(1.2); } }
+.bar { margin-top:14px; height:8px; border-radius:9px; background:rgba(255,255,255,.2); overflow:hidden; }
+.bar i { display:block; width:0; height:100%; border-radius:9px; background:linear-gradient(90deg,#FFD60A,#FF9F0A); transition: width 1.6s cubic-bezier(.22,1,.36,1) .4s; }
+/* sheets */
+.sheet { position:absolute; left:50%; top:50%; width:720px; padding:40px 44px 36px; border-radius:40px; opacity:0; pointer-events:none;
+  transform: translate(-50%,-46%) scale(.86); transition: opacity .35s, transform .7s cubic-bezier(.34,1.4,.5,1); z-index:20; }
+.sheet.show { opacity:1; pointer-events:auto; transform: translate(-50%,-50%) scale(1); }
+.close { position:absolute; right:28px; top:28px; width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+.radar { position:relative; width:220px; height:220px; margin:26px auto 10px; }
+.radar i { position:absolute; inset:0; border-radius:50%; border:2px solid rgba(255,255,255,.5); opacity:0; animation: ring 2.4s cubic-bezier(.2,.6,.3,1) infinite; }
+.radar i:nth-child(2) { animation-delay:.8s; } .radar i:nth-child(3) { animation-delay:1.6s; }
+@keyframes ring { 0% { transform:scale(.35); opacity:.9; } 100% { transform:scale(1.15); opacity:0; } }
+.radar .me, .radar .them { position:absolute; top:50%; left:50%; width:96px; height:96px; margin:-48px; font-size:38px; transition: transform .8s cubic-bezier(.34,1.56,.64,1), opacity .4s; }
+.radar .them { opacity:0; transform: translateX(0) scale(.3); }
+.found .radar .me { transform: translateX(-70px); } .found .radar .them { opacity:1; transform: translateX(70px) scale(1); }
+.found .radar i { animation-play-state: paused; opacity:0; }
+.vs { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) scale(0); font-family:"Inter Display","Inter",-apple-system,system-ui,sans-serif; font-weight:900; font-size:26px; transition: transform .6s cubic-bezier(.34,1.56,.64,1) .3s; }
+.found .vs { transform:translate(-50%,-50%) scale(1); }
+.ctile { width:64px; height:78px; border-radius:18px; display:flex; align-items:center; justify-content:center; font-family:"Inter Display","Inter",-apple-system,system-ui,sans-serif; font-weight:800; font-size:38px;
+  opacity:0; transform: translateY(24px) scale(.6); transition: transform .6s cubic-bezier(.34,1.7,.5,1), opacity .3s; }
+.sheet.show .ctile { opacity:1; transform:none; }
+.cdash { width:22px; text-align:center; font-size:36px; opacity:.6; }
+#cursor { position:fixed; left:0; top:0; width:30px; height:30px; pointer-events:none; z-index:999; display:none; transform-origin:4px 3px; transition: scale .15s; }
+body.demo #cursor { display:block; } body.demo, body.demo * { cursor:none !important; }
+</style></head><body>
+<div id="stage">
+ <div id="bgwrap"><svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+<defs>
+ <radialGradient id="bgG" cx="30%" cy="20%" r="90%"><stop offset="0" stop-color="#2A6BFF"/><stop offset=".45" stop-color="#5B2DD8"/><stop offset="1" stop-color="#14123A"/></radialGradient>
+ <radialGradient id="blobA" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#FF4FD8" stop-opacity=".55"/><stop offset="1" stop-color="#FF4FD8" stop-opacity="0"/></radialGradient>
+ <radialGradient id="blobB" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#2BE0C9" stop-opacity=".5"/><stop offset="1" stop-color="#2BE0C9" stop-opacity="0"/></radialGradient>
+ <linearGradient id="board" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1E2A4A"/><stop offset="1" stop-color="#121A33"/></linearGradient>
+ <linearGradient id="sandG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EBCB92"/><stop offset="1" stop-color="#C99E5C"/></linearGradient>
+ <linearGradient id="steelG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#F2F3F7"/><stop offset=".5" stop-color="#AEB4BF"/><stop offset="1" stop-color="#7C8492"/></linearGradient>
+ <radialGradient id="zoneHi" cx="35%" cy="25%" r="70%"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></radialGradient>
+ <pattern id="check" width="16" height="16" patternUnits="userSpaceOnUse"><rect width="16" height="16" fill="#fff"/><rect width="8" height="8" fill="#111"/><rect x="8" y="8" width="8" height="8" fill="#111"/></pattern>
+ <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse"><path d="M48 0H0V48" fill="none" stroke="#fff" stroke-opacity=".05" stroke-width="1"/></pattern>
+</defs>
+<rect width="1440" height="900" fill="url(#bgG)"/>
+<circle cx="1250" cy="160" r="420" fill="url(#blobA)"/><circle cx="160" cy="820" r="460" fill="url(#blobB)"/>
+<rect x="110" y="110" width="1220" height="700" rx="56" fill="url(#board)" fill-opacity=".92"/>
+<rect x="110" y="110" width="1220" height="700" rx="56" fill="url(#grid)"/>
+<rect x="110" y="110" width="1220" height="700" rx="56" fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="2"/>
+<path d="M300,250 C384.2,200.8 566.7,180.8 700,175 C833.3,169.2 1005.8,174.2 1100,215 C1194.2,255.8 1260.0,345.0 1265,420 C1270.0,495.0 1204.2,633.3 1130,665 C1055.8,696.7 901.7,598.3 820,610 C738.3,621.7 723.3,720.0 640,735 C556.7,750.0 394.2,744.2 320,700 C245.8,655.8 198.3,545.0 195,470 C191.7,395.0 215.8,299.2 300,250 Z" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="112" transform="translate(0 10)" stroke-linejoin="round"/>
+<path d="M300,250 C384.2,200.8 566.7,180.8 700,175 C833.3,169.2 1005.8,174.2 1100,215 C1194.2,255.8 1260.0,345.0 1265,420 C1270.0,495.0 1204.2,633.3 1130,665 C1055.8,696.7 901.7,598.3 820,610 C738.3,621.7 723.3,720.0 640,735 C556.7,750.0 394.2,744.2 320,700 C245.8,655.8 198.3,545.0 195,470 C191.7,395.0 215.8,299.2 300,250 Z" fill="none" stroke="#fff" stroke-width="104" stroke-linejoin="round"/>
+<path d="M300,250 C384.2,200.8 566.7,180.8 700,175 C833.3,169.2 1005.8,174.2 1100,215 C1194.2,255.8 1260.0,345.0 1265,420 C1270.0,495.0 1204.2,633.3 1130,665 C1055.8,696.7 901.7,598.3 820,610 C738.3,621.7 723.3,720.0 640,735 C556.7,750.0 394.2,744.2 320,700 C245.8,655.8 198.3,545.0 195,470 C191.7,395.0 215.8,299.2 300,250 Z" fill="none" stroke="#FF3B30" stroke-width="104" stroke-dasharray="22 22" stroke-linejoin="round"/>
+<path d="M300,250 C384.2,200.8 566.7,180.8 700,175 C833.3,169.2 1005.8,174.2 1100,215 C1194.2,255.8 1260.0,345.0 1265,420 C1270.0,495.0 1204.2,633.3 1130,665 C1055.8,696.7 901.7,598.3 820,610 C738.3,621.7 723.3,720.0 640,735 C556.7,750.0 394.2,744.2 320,700 C245.8,655.8 198.3,545.0 195,470 C191.7,395.0 215.8,299.2 300,250 Z" fill="none" stroke="#3A3F4B" stroke-width="88" stroke-linejoin="round"/>
+<path d="M300,250 C384.2,200.8 566.7,180.8 700,175 C833.3,169.2 1005.8,174.2 1100,215 C1194.2,255.8 1260.0,345.0 1265,420 C1270.0,495.0 1204.2,633.3 1130,665 C1055.8,696.7 901.7,598.3 820,610 C738.3,621.7 723.3,720.0 640,735 C556.7,750.0 394.2,744.2 320,700 C245.8,655.8 198.3,545.0 195,470 C191.7,395.0 215.8,299.2 300,250 Z" fill="none" stroke="#4A505E" stroke-width="70" stroke-linejoin="round"/>
+<path d="M300,250 C384.2,200.8 566.7,180.8 700,175 C833.3,169.2 1005.8,174.2 1100,215 C1194.2,255.8 1260.0,345.0 1265,420 C1270.0,495.0 1204.2,633.3 1130,665 C1055.8,696.7 901.7,598.3 820,610 C738.3,621.7 723.3,720.0 640,735 C556.7,750.0 394.2,744.2 320,700 C245.8,655.8 198.3,545.0 195,470 C191.7,395.0 215.8,299.2 300,250 Z" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="3" stroke-dasharray="26 22"/>
+<g transform="translate(225 328) rotate(-62)"><rect x="-10" y="-44" width="20" height="88" fill="url(#check)"/></g>
+<g transform="translate(889 176) rotate(3)"><rect x="-60.0" y="-41" width="120" height="82" rx="6" fill="url(#sandG)"/><circle cx="-42" cy="-11" r="1.2" fill="#8A6A3C" fill-opacity=".6"/><circle cx="10" cy="15" r="1.5" fill="#8A6A3C" fill-opacity=".6"/><circle cx="4" cy="23" r="1.7" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-3" cy="-16" r="1.1" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-50" cy="-33" r="1.4" fill="#8A6A3C" fill-opacity=".6"/><circle cx="1" cy="-3" r="1.8" fill="#8A6A3C" fill-opacity=".6"/><circle cx="34" cy="33" r="1.9" fill="#8A6A3C" fill-opacity=".6"/><circle cx="20" cy="-34" r="1.6" fill="#8A6A3C" fill-opacity=".6"/><circle cx="47" cy="-23" r="1.7" fill="#8A6A3C" fill-opacity=".6"/><circle cx="19" cy="-30" r="1.1" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-10" cy="-14" r="1.7" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-55" cy="6" r="1.4" fill="#8A6A3C" fill-opacity=".6"/><circle cx="50" cy="3" r="1.8" fill="#8A6A3C" fill-opacity=".6"/><circle cx="33" cy="6" r="1.2" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-50" cy="9" r="1.6" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-34" cy="2" r="1.6" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-41" cy="9" r="1.1" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-52" cy="32" r="1.3" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-40" cy="20" r="1.0" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-36" cy="-23" r="1.7" fill="#8A6A3C" fill-opacity=".6"/><circle cx="15" cy="-28" r="1.0" fill="#8A6A3C" fill-opacity=".6"/><circle cx="36" cy="-29" r="1.5" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-52" cy="4" r="1.2" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-51" cy="32" r="1.5" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-44" cy="-23" r="1.7" fill="#8A6A3C" fill-opacity=".6"/><circle cx="8" cy="33" r="1.2" fill="#8A6A3C" fill-opacity=".6"/><circle cx="50" cy="1" r="1.4" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-7" cy="26" r="1.1" fill="#8A6A3C" fill-opacity=".6"/><circle cx="53" cy="17" r="1.7" fill="#8A6A3C" fill-opacity=".6"/><circle cx="15" cy="3" r="1.5" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-3" cy="23" r="1.4" fill="#8A6A3C" fill-opacity=".6"/><circle cx="41" cy="16" r="1.9" fill="#8A6A3C" fill-opacity=".6"/><circle cx="37" cy="23" r="1.6" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-35" cy="-16" r="1.3" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-9" cy="-23" r="1.4" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-52" cy="5" r="1.8" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-40" cy="-26" r="1.6" fill="#8A6A3C" fill-opacity=".6"/><circle cx="55" cy="-7" r="1.3" fill="#8A6A3C" fill-opacity=".6"/><circle cx="4" cy="18" r="1.2" fill="#8A6A3C" fill-opacity=".6"/><circle cx="33" cy="-2" r="1.2" fill="#8A6A3C" fill-opacity=".6"/><rect x="-60.0" y="-41" width="120" height="82" rx="6" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="2"/></g><g transform="translate(1068 669) rotate(-171)"><rect x="-55.0" y="-41" width="110" height="82" rx="6" fill="url(#sandG)"/><circle cx="-46" cy="-11" r="1.1" fill="#8A6A3C" fill-opacity=".6"/><circle cx="40" cy="11" r="1.7" fill="#8A6A3C" fill-opacity=".6"/><circle cx="21" cy="14" r="1.8" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-44" cy="-33" r="1.3" fill="#8A6A3C" fill-opacity=".6"/><circle cx="24" cy="-30" r="1.2" fill="#8A6A3C" fill-opacity=".6"/><circle cx="2" cy="28" r="1.6" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-1" cy="-27" r="1.1" fill="#8A6A3C" fill-opacity=".6"/><circle cx="28" cy="36" r="1.7" fill="#8A6A3C" fill-opacity=".6"/><circle cx="38" cy="-8" r="2.0" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-42" cy="35" r="2.0" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-38" cy="-20" r="1.9" fill="#8A6A3C" fill-opacity=".6"/><circle cx="45" cy="21" r="1.6" fill="#8A6A3C" fill-opacity=".6"/><circle cx="10" cy="-14" r="1.5" fill="#8A6A3C" fill-opacity=".6"/><circle cx="4" cy="24" r="1.4" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-35" cy="12" r="1.5" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-43" cy="-34" r="1.9" fill="#8A6A3C" fill-opacity=".6"/><circle cx="19" cy="-31" r="1.7" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-18" cy="-23" r="1.0" fill="#8A6A3C" fill-opacity=".6"/><circle cx="21" cy="-5" r="1.4" fill="#8A6A3C" fill-opacity=".6"/><circle cx="9" cy="-23" r="1.3" fill="#8A6A3C" fill-opacity=".6"/><circle cx="23" cy="15" r="1.9" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-44" cy="-27" r="1.7" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-19" cy="24" r="1.6" fill="#8A6A3C" fill-opacity=".6"/><circle cx="40" cy="-26" r="1.1" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-40" cy="-31" r="1.5" fill="#8A6A3C" fill-opacity=".6"/><circle cx="32" cy="-28" r="1.0" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-48" cy="-15" r="1.1" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-3" cy="-15" r="1.1" fill="#8A6A3C" fill-opacity=".6"/><circle cx="21" cy="3" r="1.7" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-8" cy="-24" r="1.6" fill="#8A6A3C" fill-opacity=".6"/><circle cx="14" cy="25" r="1.4" fill="#8A6A3C" fill-opacity=".6"/><circle cx="43" cy="14" r="1.7" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-15" cy="-16" r="1.9" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-37" cy="27" r="1.9" fill="#8A6A3C" fill-opacity=".6"/><circle cx="32" cy="-5" r="1.2" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-29" cy="-0" r="1.9" fill="#8A6A3C" fill-opacity=".6"/><circle cx="7" cy="-11" r="1.7" fill="#8A6A3C" fill-opacity=".6"/><circle cx="4" cy="3" r="1.5" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-27" cy="-16" r="1.6" fill="#8A6A3C" fill-opacity=".6"/><circle cx="-28" cy="-2" r="1.8" fill="#8A6A3C" fill-opacity=".6"/><rect x="-55.0" y="-41" width="110" height="82" rx="6" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="2"/></g><g transform="translate(1264 413) rotate(84)"><rect x="-14" y="-46" width="28" height="92" rx="5" fill="#000" fill-opacity=".25" transform="translate(4 5)"/><rect x="-14" y="-46" width="28" height="92" rx="5" fill="url(#steelG)"/><rect x="-10" y="-42" width="5" height="84" rx="2.5" fill="#fff" fill-opacity=".55"/><circle cx="0" cy="-36" r="2.2" fill="#6E737C"/><circle cx="0" cy="36" r="2.2" fill="#6E737C"/></g><g transform="translate(516 742) rotate(-178)"><rect x="-14" y="-46" width="28" height="92" rx="5" fill="#000" fill-opacity=".25" transform="translate(4 5)"/><rect x="-14" y="-46" width="28" height="92" rx="5" fill="url(#steelG)"/><rect x="-10" y="-42" width="5" height="84" rx="2.5" fill="#fff" fill-opacity=".55"/><circle cx="0" cy="-36" r="2.2" fill="#6E737C"/><circle cx="0" cy="36" r="2.2" fill="#6E737C"/></g><g transform="translate(539 188)"><circle r="34" fill="#34C759" fill-opacity=".18"/><circle r="24" fill="#34C759" fill-opacity=".28"/><circle r="17" fill="#34C759"/><circle r="17" fill="url(#zoneHi)"/><text y="6.5" text-anchor="middle" font-family="Inter Display, Inter, -apple-system, sans-serif" font-weight="800" font-size="19" fill="#fff">?</text></g><g transform="translate(1185 271)"><circle r="34" fill="#FF9500" fill-opacity=".18"/><circle r="24" fill="#FF9500" fill-opacity=".28"/><circle r="17" fill="#FF9500"/><circle r="17" fill="url(#zoneHi)"/><text y="6.5" text-anchor="middle" font-family="Inter Display, Inter, -apple-system, sans-serif" font-weight="800" font-size="19" fill="#fff">?</text></g><g transform="translate(1211 587)"><circle r="34" fill="#0A84FF" fill-opacity=".18"/><circle r="24" fill="#0A84FF" fill-opacity=".28"/><circle r="17" fill="#0A84FF"/><circle r="17" fill="url(#zoneHi)"/><text y="6.5" text-anchor="middle" font-family="Inter Display, Inter, -apple-system, sans-serif" font-weight="800" font-size="19" fill="#fff">⚡</text></g><g transform="translate(774 628)"><circle r="34" fill="#FF3B30" fill-opacity=".18"/><circle r="24" fill="#FF3B30" fill-opacity=".28"/><circle r="17" fill="#FF3B30"/><circle r="17" fill="url(#zoneHi)"/><text y="6.5" text-anchor="middle" font-family="Inter Display, Inter, -apple-system, sans-serif" font-weight="800" font-size="19" fill="#fff">?</text></g><g transform="translate(248 626)"><circle r="34" fill="#34C759" fill-opacity=".18"/><circle r="24" fill="#34C759" fill-opacity=".28"/><circle r="17" fill="#34C759"/><circle r="17" fill="url(#zoneHi)"/><text y="6.5" text-anchor="middle" font-family="Inter Display, Inter, -apple-system, sans-serif" font-weight="800" font-size="19" fill="#fff">?</text></g><g transform="translate(690 712)"><circle r="34" fill="#0A84FF" fill-opacity=".18"/><circle r="24" fill="#0A84FF" fill-opacity=".28"/><circle r="17" fill="#0A84FF"/><circle r="17" fill="url(#zoneHi)"/><text y="6.5" text-anchor="middle" font-family="Inter Display, Inter, -apple-system, sans-serif" font-weight="800" font-size="19" fill="#fff">⚡</text></g><g transform="translate(268 195)"><ellipse cx="2" cy="2" rx="7" ry="3" fill="#000" fill-opacity=".25"/><rect x="-1.5" y="-40" width="3" height="42" rx="1.5" fill="#E5E5EA"/><path d="M1.5 -40 L28 -31 L1.5 -22 Z" fill="#FF3B30"/><path d="M1.5 -40 L28 -31 L1.5 -33 Z" fill="#fff" fill-opacity=".3"/></g><g transform="translate(1204 203)"><ellipse cx="2" cy="2" rx="7" ry="3" fill="#000" fill-opacity=".25"/><rect x="-1.5" y="-40" width="3" height="42" rx="1.5" fill="#E5E5EA"/><path d="M1.5 -40 L28 -31 L1.5 -22 Z" fill="#FF3B30"/><path d="M1.5 -40 L28 -31 L1.5 -33 Z" fill="#fff" fill-opacity=".3"/></g><g transform="translate(958 706)"><ellipse cx="2" cy="2" rx="7" ry="3" fill="#000" fill-opacity=".25"/><rect x="-1.5" y="-40" width="3" height="42" rx="1.5" fill="#E5E5EA"/><path d="M1.5 -40 L28 -31 L1.5 -22 Z" fill="#FF3B30"/><path d="M1.5 -40 L28 -31 L1.5 -33 Z" fill="#fff" fill-opacity=".3"/></g><g transform="translate(375 788)"><ellipse cx="2" cy="2" rx="7" ry="3" fill="#000" fill-opacity=".25"/><rect x="-1.5" y="-40" width="3" height="42" rx="1.5" fill="#E5E5EA"/><path d="M1.5 -40 L28 -31 L1.5 -22 Z" fill="#FF3B30"/><path d="M1.5 -40 L28 -31 L1.5 -33 Z" fill="#fff" fill-opacity=".3"/></g>
+<g transform="translate(732.7 173.8) rotate(-1.6) scale(1.4)">
+  <ellipse cx="3" cy="4" rx="30" ry="17" fill="#000" fill-opacity=".28"/>
+  <rect x="-28" y="-15" width="10" height="7" rx="2" fill="#111"/><rect x="-28" y="8" width="10" height="7" rx="2" fill="#111"/>
+  <rect x="14" y="-15" width="10" height="7" rx="2" fill="#111"/><rect x="14" y="8" width="10" height="7" rx="2" fill="#111"/>
+  <path d="M-30 -9 C-30 -14 -26 -15 -20 -15 L18 -15 C27 -15 32 -10 32 0 C32 10 27 15 18 15 L-20 15 C-26 15 -30 14 -30 9 Z" fill="#FF3B30"/>
+  <path d="M-30 -9 C-30 -14 -26 -15 -20 -15 L18 -15 C27 -15 32 -10 32 0 L-30 0 Z" fill="#fff" fill-opacity=".18"/>
+  <path d="M2 -11 L13 -10 C17 -6 17 6 13 10 L2 11 Z" fill="#9FD3FF"/>
+  <path d="M-20 -10 L-11 -10 L-11 10 L-20 10 C-22 6 -22 -6 -20 -10 Z" fill="#9FD3FF" fill-opacity=".85"/>
+  <rect x="-9" y="-11" width="9" height="22" rx="3" fill="#B3140D"/>
+  <circle cx="30" cy="-9" r="2" fill="#FFF7C2"/><circle cx="30" cy="9" r="2" fill="#FFF7C2"/>
+</g><g transform="translate(718.8 684.6) rotate(132.1) scale(1.4)">
+  <ellipse cx="3" cy="4" rx="30" ry="17" fill="#000" fill-opacity=".28"/>
+  <rect x="-28" y="-15" width="10" height="7" rx="2" fill="#111"/><rect x="-28" y="8" width="10" height="7" rx="2" fill="#111"/>
+  <rect x="14" y="-15" width="10" height="7" rx="2" fill="#111"/><rect x="14" y="8" width="10" height="7" rx="2" fill="#111"/>
+  <path d="M-30 -9 C-30 -14 -26 -15 -20 -15 L18 -15 C27 -15 32 -10 32 0 C32 10 27 15 18 15 L-20 15 C-26 15 -30 14 -30 9 Z" fill="#0A84FF"/>
+  <path d="M-30 -9 C-30 -14 -26 -15 -20 -15 L18 -15 C27 -15 32 -10 32 0 L-30 0 Z" fill="#fff" fill-opacity=".18"/>
+  <path d="M2 -11 L13 -10 C17 -6 17 6 13 10 L2 11 Z" fill="#9FD3FF"/>
+  <path d="M-20 -10 L-11 -10 L-11 10 L-20 10 C-22 6 -22 -6 -20 -10 Z" fill="#9FD3FF" fill-opacity=".85"/>
+  <rect x="-9" y="-11" width="9" height="22" rx="3" fill="#0050B8"/>
+  <circle cx="30" cy="-9" r="2" fill="#FFF7C2"/><circle cx="30" cy="9" r="2" fill="#FFF7C2"/>
+</g>
+</svg></div>
+ <div class="dim"></div>
+ <div id="ui">
+  <div class="glass pill row panel" style="left:40px;top:32px;padding:10px 20px 10px 10px;gap:12px"><div style="width:40px;height:40px;filter:drop-shadow(0 10px 18px rgba(0,0,0,.35))"><svg width="40" height="40" viewBox="0 0 100 100">
+<defs>
+<radialGradient id="glowp0" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#34C759" stop-opacity=".22"/><stop offset="1" stop-color="#34C759" stop-opacity="0"/></radialGradient>
+<linearGradient id="redp0" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF6B5E"/><stop offset="1" stop-color="#D7261E"/></linearGradient>
+<linearGradient id="bluep0" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4DA3FF"/><stop offset="1" stop-color="#0060DF"/></linearGradient>
+<linearGradient id="steelp0" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FAFAFC"/><stop offset=".55" stop-color="#C7C7CC"/><stop offset="1" stop-color="#8E8E93"/></linearGradient>
+<radialGradient id="ballp0" cx="35%" cy="30%" r="70%"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".45" stop-color="#C9CDD4"/><stop offset="1" stop-color="#6E737C"/></radialGradient>
+<linearGradient id="goldp0" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE45C"/><stop offset="1" stop-color="#FFB800"/></linearGradient>
+<linearGradient id="tbp0" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#EEF0F5"/></linearGradient>
+<clipPath id="clp0"><path d="M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z"/></clipPath></defs>
+<path d="M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z" fill="url(#tbp0)"/>
+<g clip-path="url(#clp0)"><circle cx="50" cy="46" r="44" fill="url(#glowp0)"/><circle cx="50" cy="46" r="30" fill="none" stroke="#34C759" stroke-opacity=".14" stroke-width=".8"/><circle cx="50" cy="46" r="40" fill="none" stroke="#34C759" stroke-opacity=".09" stroke-width=".8"/>
+<g fill="none" stroke="#5E5CE6" stroke-linecap="round">
+  <path d="M34 66 Q50 84 66 66" stroke-opacity=".55" stroke-width="1.6" stroke-dasharray="3 2.6"/>
+  <path d="M31 66 Q50 95 69 66" stroke-opacity=".32" stroke-width="1.4" stroke-dasharray="3 2.6"/>
+  <path d="M28 64 Q12 62 12 44" stroke-opacity=".22" stroke-width="1.2" stroke-dasharray="3 2.6"/>
+  <path d="M72 64 Q88 62 88 44" stroke-opacity=".22" stroke-width="1.2" stroke-dasharray="3 2.6"/>
+</g>
+<ellipse cx="50" cy="66" rx="20" ry="3" fill="#000" fill-opacity=".08"/>
+<path d="M28 58V40a22 22 0 0 1 22-22v12a10 10 0 0 0-10 10v18z" fill="url(#redp0)"/>
+<path d="M50 18a22 22 0 0 1 22 22v18H60V40a10 10 0 0 0-10-10z" fill="url(#bluep0)"/>
+<path d="M31.5 40a18.5 18.5 0 0 1 15-18.2" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="2.4" stroke-linecap="round"/>
+<path d="M53.5 21.8a18.5 18.5 0 0 1 15 18.2" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="2.4" stroke-linecap="round"/>
+<rect x="28" y="56" width="12" height="9" rx="1.6" fill="url(#steelp0)"/><rect x="60" y="56" width="12" height="9" rx="1.6" fill="url(#steelp0)"/>
+<rect x="29.5" y="57.2" width="9" height="1.6" rx=".8" fill="#fff" fill-opacity=".8"/><rect x="61.5" y="57.2" width="9" height="1.6" rx=".8" fill="#fff" fill-opacity=".8"/>
+<g stroke="#8E8E93" stroke-opacity=".5" stroke-width="1.4" stroke-linecap="round"><path d="M44 92v-3"/><path d="M50 95v-4"/><path d="M56 92v-3"/></g>
+<circle cx="50" cy="80" r="7" fill="url(#ballp0)"/><ellipse cx="47.6" cy="77.4" rx="2.2" ry="1.4" fill="#fff" fill-opacity=".9"/>
+<path transform="translate(22 26) scale(0.9)" fill="url(#goldp0)" d="M0-5C.6-1.6 1.6-.6 5 0 1.6.6.6 1.6 0 5-.6 1.6-1.6.6-5 0-1.6-.6-.6-1.6 0-5z"/><path transform="translate(79 24) scale(0.65)" fill="url(#goldp0)" d="M0-5C.6-1.6 1.6-.6 5 0 1.6.6.6 1.6 0 5-.6 1.6-1.6.6-5 0-1.6-.6-.6-1.6 0-5z"/></g>
+<path d="M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z" fill="none" stroke="#fff" stroke-opacity=".9" stroke-width=".8"/>
+</svg></div><span class="disp" style="font-weight:800;font-size:19px">Magnet Race</span><span class="sheen"></span></div>
+  <div class="glass pill row panel mag" style="right:40px;top:32px;padding:8px 22px 8px 8px;gap:12px">
+   <div class="avatar" style="width:44px;height:44px;background:linear-gradient(135deg,#FF6B5E,#D7261E);font-size:18px">Y</div>
+   <div><div style="font-weight:700;font-size:16px">You</div><div class="sub" style="font-size:13px">Gold II · 1,240 pts</div></div><span class="sheen"></span></div>
+
+  <div class="glass panel tilt" style="left:96px;top:130px;width:600px;padding:40px 40px 34px"><span class="sheen"></span>
+   <div class="row" style="gap:22px"><div class="mag" id="logo"><div style="width:104px;height:104px;filter:drop-shadow(0 10px 18px rgba(0,0,0,.35))"><svg width="104" height="104" viewBox="0 0 100 100">
+<defs>
+<radialGradient id="glowp1" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#34C759" stop-opacity=".22"/><stop offset="1" stop-color="#34C759" stop-opacity="0"/></radialGradient>
+<linearGradient id="redp1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF6B5E"/><stop offset="1" stop-color="#D7261E"/></linearGradient>
+<linearGradient id="bluep1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4DA3FF"/><stop offset="1" stop-color="#0060DF"/></linearGradient>
+<linearGradient id="steelp1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FAFAFC"/><stop offset=".55" stop-color="#C7C7CC"/><stop offset="1" stop-color="#8E8E93"/></linearGradient>
+<radialGradient id="ballp1" cx="35%" cy="30%" r="70%"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".45" stop-color="#C9CDD4"/><stop offset="1" stop-color="#6E737C"/></radialGradient>
+<linearGradient id="goldp1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE45C"/><stop offset="1" stop-color="#FFB800"/></linearGradient>
+<linearGradient id="tbp1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#EEF0F5"/></linearGradient>
+<clipPath id="clp1"><path d="M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z"/></clipPath></defs>
+<path d="M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z" fill="url(#tbp1)"/>
+<g clip-path="url(#clp1)"><circle cx="50" cy="46" r="44" fill="url(#glowp1)"/><circle cx="50" cy="46" r="30" fill="none" stroke="#34C759" stroke-opacity=".14" stroke-width=".8"/><circle cx="50" cy="46" r="40" fill="none" stroke="#34C759" stroke-opacity=".09" stroke-width=".8"/>
+<g fill="none" stroke="#5E5CE6" stroke-linecap="round">
+  <path d="M34 66 Q50 84 66 66" stroke-opacity=".55" stroke-width="1.6" stroke-dasharray="3 2.6"/>
+  <path d="M31 66 Q50 95 69 66" stroke-opacity=".32" stroke-width="1.4" stroke-dasharray="3 2.6"/>
+  <path d="M28 64 Q12 62 12 44" stroke-opacity=".22" stroke-width="1.2" stroke-dasharray="3 2.6"/>
+  <path d="M72 64 Q88 62 88 44" stroke-opacity=".22" stroke-width="1.2" stroke-dasharray="3 2.6"/>
+</g>
+<ellipse cx="50" cy="66" rx="20" ry="3" fill="#000" fill-opacity=".08"/>
+<path d="M28 58V40a22 22 0 0 1 22-22v12a10 10 0 0 0-10 10v18z" fill="url(#redp1)"/>
+<path d="M50 18a22 22 0 0 1 22 22v18H60V40a10 10 0 0 0-10-10z" fill="url(#bluep1)"/>
+<path d="M31.5 40a18.5 18.5 0 0 1 15-18.2" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="2.4" stroke-linecap="round"/>
+<path d="M53.5 21.8a18.5 18.5 0 0 1 15 18.2" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="2.4" stroke-linecap="round"/>
+<rect x="28" y="56" width="12" height="9" rx="1.6" fill="url(#steelp1)"/><rect x="60" y="56" width="12" height="9" rx="1.6" fill="url(#steelp1)"/>
+<rect x="29.5" y="57.2" width="9" height="1.6" rx=".8" fill="#fff" fill-opacity=".8"/><rect x="61.5" y="57.2" width="9" height="1.6" rx=".8" fill="#fff" fill-opacity=".8"/>
+<g stroke="#8E8E93" stroke-opacity=".5" stroke-width="1.4" stroke-linecap="round"><path d="M44 92v-3"/><path d="M50 95v-4"/><path d="M56 92v-3"/></g>
+<circle cx="50" cy="80" r="7" fill="url(#ballp1)"/><ellipse cx="47.6" cy="77.4" rx="2.2" ry="1.4" fill="#fff" fill-opacity=".9"/>
+<path transform="translate(22 26) scale(0.9)" fill="url(#goldp1)" d="M0-5C.6-1.6 1.6-.6 5 0 1.6.6.6 1.6 0 5-.6 1.6-1.6.6-5 0-1.6-.6-.6-1.6 0-5z"/><path transform="translate(79 24) scale(0.65)" fill="url(#goldp1)" d="M0-5C.6-1.6 1.6-.6 5 0 1.6.6.6 1.6 0 5-.6 1.6-1.6.6-5 0-1.6-.6-.6-1.6 0-5z"/></g>
+<path d="M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z" fill="none" stroke="#fff" stroke-opacity=".9" stroke-width=".8"/>
+</svg></div></div>
+    <div><div class="disp" style="font-size:54px;font-weight:900;letter-spacing:-1.5px;line-height:1">Magnet Race</div>
+    <div class="sub" style="font-size:17px;margin-top:8px">Pull your car with physics. Answer to score.</div></div></div>
+   <div style="display:flex;flex-direction:column;gap:14px;margin-top:32px">
+    <button class="btn mag green" id="duelBtn" data-ripple><div class="ic"><svg viewBox="0 0 24 24" width="28" height="28"><path d="M5 19 19 5M15 5h4v4M19 19 5 5M5 9V5h4" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="txt"><div class="t1">Public Duel</div><div class="t2">Get matched with a random player · 1v1</div></div><div class="chev"><svg viewBox="0 0 24 24" width="24" height="24"><path d="M9 5l7 7-7 7" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span class="sheen"></span></button>
+    <button class="btn mag blue" id="roomBtn" data-ripple><div class="ic"><svg viewBox="0 0 24 24" width="28" height="28"><rect x="5" y="10.5" width="14" height="10" rx="3" fill="#fff"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="#fff" stroke-width="2.2" fill="none"/></svg></div><div class="txt"><div class="t1">Create Private Room</div><div class="t2">Invite up to 3 friends with a code</div></div><div class="chev"><svg viewBox="0 0 24 24" width="24" height="24"><path d="M9 5l7 7-7 7" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span class="sheen"></span></button>
+    <div class="row" style="gap:12px">
+     <div class="btn clear" style="flex:1;padding:16px 20px"><span class="sub" style="font-size:17px">Enter room code</span><span style="margin-left:auto;font-family:'Inter Display','Inter',-apple-system,system-ui,sans-serif;font-weight:700;letter-spacing:3px;opacity:.5">MAG-____</span></div>
+     <button class="btn mag clear" data-ripple style="width:auto;padding:16px 26px"><span class="t1" style="font-size:18px">Join</span><span class="sheen"></span></button></div>
+    <div class="row" style="gap:12px">
+     <button class="btn mag clear" data-ripple style="flex:1;padding:14px 18px;gap:12px"><div class="ic" style="width:40px;height:40px;border-radius:12px"><svg viewBox="0 0 24 24" width="22" height="22"><circle cx="9" cy="8" r="3.4" fill="#fff"/><path d="M2.5 19c.6-3.6 3.3-5.6 6.5-5.6s5.9 2 6.5 5.6" fill="#fff"/><circle cx="17" cy="9" r="2.6" fill="#fff" fill-opacity=".7"/><path d="M16 13.6c2.8 0 4.8 1.6 5.4 4.6" stroke="#fff" stroke-opacity=".7" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div><span class="t1" style="font-size:17px">Pass &amp; Play</span><span class="sheen"></span></button>
+     <button class="btn mag clear" data-ripple style="flex:1;padding:14px 18px;gap:12px"><div class="ic" style="width:40px;height:40px;border-radius:12px"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M9 3h6M10 3v6l-5 9c-.7 1.3.2 3 1.7 3h10.6c1.5 0 2.4-1.7 1.7-3l-5-9V3" stroke="#fff" stroke-width="2" fill="none" stroke-linejoin="round"/><path d="M7.3 15h9.4l1.8 3.3c.3.6-.1 1.2-.8 1.2H6.3c-.7 0-1.1-.6-.8-1.2z" fill="#fff"/></svg></div><span class="t1" style="font-size:17px">Physics Lab</span><span class="sheen"></span></button></div>
+   </div>
+  </div>
+
+  <div class="glass panel tilt" style="left:760px;top:130px;width:290px;height:176px;padding:24px"><span class="sheen"></span>
+   <div class="row sub" style="gap:8px;font-size:14px;font-weight:600"><svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="8.5" stroke="#fff" stroke-width="2" fill="none"/><path d="M3.5 12h17M12 3.5c3 3 3 14 0 17M12 3.5c-3 3-3 14 0 17" stroke="#fff" stroke-width="1.6" fill="none"/></svg> Online now</div>
+   <div class="disp" style="font-size:48px;font-weight:800;margin-top:10px;letter-spacing:-1px"><span id="count">1,284</span></div>
+   <div class="row" style="gap:8px;margin-top:8px"><span class="live"></span><span class="sub" style="font-size:14px"><span id="duels">212</span> duels running</span></div></div>
+  <div class="glass panel tilt" style="left:1070px;top:130px;width:290px;height:176px;padding:24px"><span class="sheen"></span>
+   <div class="row sub" style="gap:8px;font-size:14px;font-weight:600"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 2c1 3.5 5 5.6 5 10.6A5 5 0 0 1 7 12.6c0-2.2 1-3.6 2.2-4.8.2 1.8 1 2.8 2.2 3.2C11 8.4 11.2 5 12 2z" fill="#FFD60A"/><path d="M12 13c.6 1.4 2.2 2.2 2.2 4a2.2 2.2 0 0 1-4.4 0c0-1.2.8-2 2.2-4z" fill="#FF9F0A"/></svg> Daily challenge</div>
+   <div class="disp" style="font-size:22px;font-weight:700;margin-top:12px;line-height:1.2">3 laps under 90 s on the sandpaper track</div>
+   <div class="bar"><i id="prog"></i></div></div>
+  <div class="glass panel tilt" style="left:760px;top:326px;width:600px;padding:24px 26px 18px"><span class="sheen"></span>
+   <div class="row" style="justify-content:space-between"><div class="row sub" style="gap:8px;font-size:14px;font-weight:600"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M7 4h10v5a5 5 0 0 1-10 0z" fill="#fff"/><path d="M7 6H4.5a2.5 2.5 0 0 0 2.5 4M17 6h2.5a2.5 2.5 0 0 1-2.5 4" stroke="#fff" stroke-width="1.8" fill="none"/><rect x="11" y="13" width="2" height="4" fill="#fff"/><rect x="8" y="17" width="8" height="3" rx="1" fill="#fff"/></svg> Weekly leaderboard</div><span class="sub" style="font-size:13px">See all</span></div>
+   <div class="lrow"><span class="disp rank">1</span><div class="avatar" style="width:38px;height:38px;background:linear-gradient(135deg,#BF5AF2,#5E5CE6);font-size:15px">M</div><span class="nm">Malika</span><span class="sub tier">Diamond I</span><span class="disp pts">2,980</span></div><div class="lrow"><span class="disp rank">2</span><div class="avatar" style="width:38px;height:38px;background:linear-gradient(135deg,#64D2FF,#0A84FF);font-size:15px">T</div><span class="nm">Timur</span><span class="sub tier">Diamond III</span><span class="disp pts">2,715</span></div><div class="lrow"><span class="disp rank">3</span><div class="avatar" style="width:38px;height:38px;background:linear-gradient(135deg,#5BE584,#1FA84F);font-size:15px">A</div><span class="nm">Aziz</span><span class="sub tier">Platinum I</span><span class="disp pts">2,402</span></div></div>
+
+  <div class="glass" id="tabbar"><div id="lens"></div><button class="tab on" data-tab="Play"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z" fill="#fff"/></svg><span>Play</span></button><button class="tab" data-tab="Ranks"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M7 4h10v5a5 5 0 0 1-10 0z" fill="#fff"/><path d="M7 6H4.5a2.5 2.5 0 0 0 2.5 4M17 6h2.5a2.5 2.5 0 0 1-2.5 4" stroke="#fff" stroke-width="1.8" fill="none"/><rect x="11" y="13" width="2" height="4" fill="#fff"/><rect x="8" y="17" width="8" height="3" rx="1" fill="#fff"/></svg><span>Ranks</span></button><button class="tab" data-tab="Lab"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M9 3h6M10 3v6l-5 9c-.7 1.3.2 3 1.7 3h10.6c1.5 0 2.4-1.7 1.7-3l-5-9V3" stroke="#fff" stroke-width="2" fill="none" stroke-linejoin="round"/><path d="M7.3 15h9.4l1.8 3.3c.3.6-.1 1.2-.8 1.2H6.3c-.7 0-1.1-.6-.8-1.2z" fill="#fff"/></svg><span>Lab</span></button><button class="tab" data-tab="Profile"><svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="8" r="4" fill="#fff"/><path d="M4 20c.8-4.2 4-6.6 8-6.6s7.2 2.4 8 6.6" fill="#fff"/></svg><span>Profile</span></button></div>
+ </div>
+
+ <div class="glass sheet" id="duelSheet">
+  <button class="glass close mag" data-close><svg viewBox="0 0 24 24" width="22" height="22"><path d="M6 6l12 12M18 6 6 18" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg></button>
+  <div class="disp" id="duelTitle" style="font-size:36px;font-weight:800;letter-spacing:-1px">Finding an opponent…</div>
+  <div class="sub" id="duelSub" style="font-size:16px;margin-top:6px">Matching you with a player near Gold II</div>
+  <div class="radar"><i></i><i></i><i></i>
+   <div class="avatar me" style="background:linear-gradient(135deg,#FF6B5E,#D7261E)">Y</div>
+   <div class="avatar them" style="background:linear-gradient(135deg,#5BE584,#1FA84F)">A</div><div class="vs">VS</div></div>
+  <div class="row" style="justify-content:center;gap:10px;margin-top:8px"><div class="glass flow pill" style="padding:9px 18px;font-weight:700"><span id="timer">0:00</span></div></div>
+ </div>
+ <div class="glass sheet" id="roomSheet">
+  <button class="glass close mag" data-close><svg viewBox="0 0 24 24" width="22" height="22"><path d="M6 6l12 12M18 6 6 18" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg></button>
+  <div class="disp" style="font-size:36px;font-weight:800;letter-spacing:-1px">Private Room</div>
+  <div class="sub" style="font-size:16px;margin-top:6px">Share this code with up to 3 friends.</div>
+  <div class="row" style="gap:10px;margin-top:28px;justify-content:center"><div class="ctile glass flow">M</div><div class="ctile glass flow">A</div><div class="ctile glass flow">G</div><div class="cdash">–</div><div class="ctile glass flow">4</div><div class="ctile glass flow">8</div><div class="ctile glass flow">2</div><div class="ctile glass flow">1</div></div>
+  <div class="row" style="gap:12px;margin-top:28px;justify-content:center">
+   <button class="btn mag clear" data-ripple style="width:auto;padding:14px 22px;gap:10px"><svg viewBox="0 0 24 24" width="22" height="22"><rect x="8" y="8" width="12" height="12" rx="3" stroke="#fff" stroke-width="2" fill="none"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke="#fff" stroke-width="2" fill="none"/></svg><span class="t1" style="font-size:17px">Copy link</span><span class="sheen"></span></button>
+   <button class="btn mag green" data-ripple style="width:auto;padding:14px 26px;gap:10px"><span class="t1" style="font-size:17px">Open lobby</span><svg viewBox="0 0 24 24" width="20" height="20"><path d="M9 5l7 7-7 7" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sheen"></span></button></div>
+ </div>
+</div>
+<svg id="cursor" viewBox="0 0 30 30"><path d="M4 3 L4 24 L9.5 18.8 L13.2 27 L17 25.3 L13.4 17.4 L21 17.2 Z" fill="#000" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+<script>
+const stage = document.getElementById('stage');
+function fit() { const s = Math.min(innerWidth / 1440, innerHeight / 900); stage.style.transform = `scale(${s})`; }
+addEventListener('resize', fit); fit();
+if (location.hash === '#demo') document.body.classList.add('demo');
+const cur = document.getElementById('cursor');
+addEventListener('pointermove', e => { cur.style.left = e.clientX + 'px'; cur.style.top = e.clientY + 'px'; });
+addEventListener('pointerdown', () => cur.style.scale = '.8'); addEventListener('pointerup', () => cur.style.scale = '1');
+
+// ---------- spring engine ----------
+class Spring { constructor(k = 320, d = 24) { this.k = k; this.d = d; this.v = {}; this.x = {}; this.t = {}; }
+  set(key, val, init) { this.t[key] = val; if (!(key in this.x)) { this.x[key] = init ?? val; this.v[key] = 0; } }
+  step(dt) { let moving = false; for (const k in this.t) { const f = -this.k * (this.x[k] - this.t[k]) - this.d * this.v[k];
+      this.v[k] += f * dt; this.x[k] += this.v[k] * dt; if (Math.abs(this.v[k]) > 1e-3 || Math.abs(this.x[k] - this.t[k]) > 1e-3) moving = true; } return moving; } }
+const springs = [];
+function track(el, apply, k, d) { const s = new Spring(k, d); s.el = el; s.apply = apply; springs.push(s); return s; }
+let last = performance.now();
+function loop(now) { const dt = Math.min(.032, (now - last) / 1000); last = now;
+  for (const s of springs) { for (let i = 0; i < 2; i++) s.step(dt / 2); s.apply(s.x); } requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+
+// magnetic buttons: follow pointer a little, lift, squish on press
+document.querySelectorAll('.mag').forEach(el => {
+  const s = track(el, x => el.style.transform = `translate(${x.tx}px,${x.ty}px) perspective(800px) rotateX(${x.rx}deg) rotateY(${x.ry}deg) scale(${x.sc})`, 380, 22);
+  ['tx','ty','rx','ry'].forEach(k => s.set(k, 0)); s.set('sc', 1);
+  let hover = false, down = false;
+  el.addEventListener('pointermove', e => { const r = el.getBoundingClientRect(); const px = (e.clientX - r.left) / r.width - .5, py = (e.clientY - r.top) / r.height - .5;
+    const big = r.width > 300; s.set('tx', px * (big ? 10 : 8)); s.set('ty', py * (big ? 6 : 8) - 2); s.set('ry', px * (big ? 5 : 10)); s.set('rx', -py * (big ? 7 : 10));
+    s.set('sc', down ? .95 : 1.025); el.style.setProperty('--hx', (px + .5) * 100 + '%'); el.style.setProperty('--hy', (py + .5) * 100 + '%'); });
+  el.addEventListener('pointerenter', () => { hover = true; s.set('sc', 1.025); });
+  el.addEventListener('pointerleave', () => { hover = down = false; ['tx','ty','rx','ry'].forEach(k => s.set(k, 0)); s.set('sc', 1); });
+  el.addEventListener('pointerdown', e => { down = true; s.set('sc', .94);
+    if (el.hasAttribute('data-ripple')) { const r = el.getBoundingClientRect(), z = r.width / el.offsetWidth; const rp = document.createElement('span'); rp.className = 'ripple';
+      rp.style.left = (e.clientX - r.left) / z + 'px'; rp.style.top = (e.clientY - r.top) / z + 'px'; el.appendChild(rp); setTimeout(() => rp.remove(), 800); } });
+  el.addEventListener('pointerup', () => { down = false; s.v.sc = 2.5; s.set('sc', hover ? 1.025 : 1); });
+});
+// glass panels: gentle 3D tilt + moving highlight
+document.querySelectorAll('.tilt').forEach(el => {
+  const s = track(el, x => el.style.transform = `perspective(1400px) rotateX(${x.rx}deg) rotateY(${x.ry}deg)`, 180, 20); s.set('rx', 0); s.set('ry', 0);
+  el.addEventListener('pointermove', e => { const r = el.getBoundingClientRect(); const px = (e.clientX - r.left) / r.width - .5, py = (e.clientY - r.top) / r.height - .5;
+    s.set('ry', px * 3); s.set('rx', -py * 3); el.style.setProperty('--hx', (px + .5) * 100 + '%'); el.style.setProperty('--hy', (py + .5) * 100 + '%'); });
+  el.addEventListener('pointerleave', () => { s.set('rx', 0); s.set('ry', 0); });
+});
+// background parallax
+const bg = document.getElementById('bgwrap'); const bs = track(bg, x => bg.style.transform = `translate(${x.x}px,${x.y}px) scale(1.03)`, 60, 14); bs.set('x', 0); bs.set('y', 0);
+stage.addEventListener('pointermove', e => { const r = stage.getBoundingClientRect(); bs.set('x', -((e.clientX - r.left) / r.width - .5) * 24); bs.set('y', -((e.clientY - r.top) / r.height - .5) * 16); });
+
+// liquid tab bar lens
+const bar = document.getElementById('tabbar'), lens = document.getElementById('lens'), tabsEl = [...bar.querySelectorAll('.tab')];
+const ls = track(lens, x => { lens.style.left = x.l + 'px'; lens.style.width = x.w + 'px'; lens.style.transform = `scale(${x.s},${2 - x.s})`; }, 300, 20);
+let active = tabsEl[0];
+const place = (t, init) => { ls.set('l', t.offsetLeft, init && t.offsetLeft); ls.set('w', t.offsetWidth, init && t.offsetWidth); };
+place(active, true); ls.set('s', 1);
+tabsEl.forEach(t => { t.addEventListener('pointerenter', () => place(t)); t.addEventListener('pointerdown', () => ls.set('s', 1.12));
+  t.addEventListener('pointerup', () => { ls.set('s', 1); active.classList.remove('on'); active = t; t.classList.add('on'); }); });
+bar.addEventListener('pointerleave', () => place(active));
+// stretch lens while moving (liquid feel)
+setInterval(() => { const v = Math.abs(ls.v.l || 0); ls.t.s = Math.max(ls.t.s === 1.12 ? 1.12 : 1, 1 + Math.min(v / 3000, .12)); }, 16);
+
+// live numbers
+const count = document.getElementById('count'); let n = 1284;
+function tween(el, from, to) { const t0 = performance.now(); (function f(now) { const p = Math.min(1, (now - t0) / 700), e = 1 - Math.pow(1 - p, 3);
+  el.textContent = Math.round(from + (to - from) * e).toLocaleString('en-US'); if (p < 1) requestAnimationFrame(f); })(t0); }
+setInterval(() => { const m = n + Math.round((Math.random() - .4) * 9); tween(count, n, m); n = m; }, 1800);
+setTimeout(() => document.getElementById('prog').style.width = '62%', 300);
+
+// sheets
+function openSheet(id) { document.body.classList.add('sheet-open'); document.getElementById(id).classList.add('show'); }
+function closeSheets() { document.body.classList.remove('sheet-open'); document.querySelectorAll('.sheet').forEach(s => s.classList.remove('show', 'found')); clearInterval(window._tm); }
+document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeSheets));
+document.getElementById('roomBtn').addEventListener('click', () => setTimeout(() => openSheet('roomSheet'), 120));
+document.getElementById('duelBtn').addEventListener('click', () => { setTimeout(() => openSheet('duelSheet'), 120);
+  const sh = document.getElementById('duelSheet'); let sec = 0; document.getElementById('timer').textContent = '0:00';
+  document.getElementById('duelTitle').textContent = 'Finding an opponent…'; document.getElementById('duelSub').textContent = 'Matching you with a player near Gold II';
+  window._tm = setInterval(() => { sec++; document.getElementById('timer').textContent = '0:0' + sec;
+    if (sec === 3) { sh.classList.add('found'); document.getElementById('duelTitle').textContent = 'Opponent found!'; document.getElementById('duelSub').textContent = 'Aziz · Platinum I — race starts in 3…'; clearInterval(window._tm); } }, 1000); });
+</script></body></html>

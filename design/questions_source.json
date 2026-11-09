@@ -1,0 +1,243 @@
+{
+ "easy": [
+  {
+   "topic": "Attraction & repulsion",
+   "q": "Two north poles are pushed close together. What happens?",
+   "options": [
+    "They attract",
+    "They repel",
+    "Nothing happens",
+    "They stick together"
+   ],
+   "answer": "B"
+  },
+  {
+   "topic": "Magnetism",
+   "q": "Which metal is attracted to a magnet?",
+   "options": [
+    "Copper",
+    "Aluminium",
+    "Iron",
+    "Brass"
+   ],
+   "answer": "C"
+  },
+  {
+   "topic": "Magnetism",
+   "q": "Outside a bar magnet, magnetic field lines point from…",
+   "options": [
+    "North to south",
+    "South to north",
+    "North to north",
+    "The middle outwards"
+   ],
+   "answer": "A"
+  },
+  {
+   "topic": "Attraction & repulsion",
+   "q": "A north pole is brought near a south pole. What happens?",
+   "options": [
+    "They attract",
+    "They repel",
+    "No force at all",
+    "They spin round"
+   ],
+   "answer": "A"
+  },
+  {
+   "topic": "Magnetism",
+   "q": "Where is the magnetic field of a bar magnet strongest?",
+   "options": [
+    "In the middle",
+    "At the poles",
+    "Equal everywhere",
+    "Far away from it"
+   ],
+   "answer": "B"
+  },
+  {
+   "topic": "Static charge",
+   "q": "Rubbing a balloon on cloth moves which particles?",
+   "options": [
+    "Protons",
+    "Neutrons",
+    "Electrons",
+    "Whole atoms"
+   ],
+   "answer": "C"
+  },
+  {
+   "topic": "Static charge",
+   "q": "Two objects with the same type of charge will…",
+   "options": [
+    "Attract",
+    "Repel",
+    "Cancel out",
+    "Heat up"
+   ],
+   "answer": "B"
+  },
+  {
+   "topic": "Forces & friction",
+   "q": "In which direction does friction act on a moving car?",
+   "options": [
+    "Same way as motion",
+    "Opposite to motion",
+    "Straight up",
+    "Straight down"
+   ],
+   "answer": "B"
+  },
+  {
+   "topic": "Electromagnetism",
+   "q": "What does an electromagnet need to work?",
+   "options": [
+    "Current in a coil of wire",
+    "A plastic core",
+    "A copper magnet",
+    "Sunlight"
+   ],
+   "answer": "A"
+  },
+  {
+   "topic": "Magnetism",
+   "q": "Which instrument shows the direction of a magnetic field?",
+   "options": [
+    "Ammeter",
+    "Plotting compass",
+    "Thermometer",
+    "Voltmeter"
+   ],
+   "answer": "B"
+  }
+ ],
+ "medium": [
+  {
+   "topic": "Magnetism",
+   "q": "Explain why the steel car is always attracted to the magnet and never repelled.",
+   "model_answer": "The magnet induces magnetism in the steel. The end nearest the magnet becomes the opposite pole, so it is always attracted."
+  },
+  {
+   "topic": "Electromagnetism",
+   "q": "Why is soft iron, not steel, used for the core of an electromagnet?",
+   "model_answer": "Soft iron magnetises and demagnetises easily (a temporary magnet), so the electromagnet can be switched off."
+  },
+  {
+   "topic": "Electromagnetism",
+   "q": "Name three ways to make an electromagnet stronger.",
+   "model_answer": "More turns on the coil, a bigger current, and a soft iron core."
+  },
+  {
+   "topic": "Attraction & repulsion",
+   "q": "How can you prove an object is a magnet and not just a piece of iron?",
+   "model_answer": "Show that it repels a known magnet. Repulsion only happens between two magnets; iron is only ever attracted."
+  },
+  {
+   "topic": "Forces & friction",
+   "q": "Our car weighs 0.5 N and the track has μ = 0.2. Work out the friction force.",
+   "model_answer": "Friction = μ × weight = 0.2 × 0.5 = 0.1 N."
+  },
+  {
+   "topic": "Static charge",
+   "q": "Explain why a charged ruler can pick up small pieces of neutral paper.",
+   "model_answer": "It induces opposite charge on the near side of the paper. That side is closer, so the attraction is bigger than the repulsion."
+  },
+  {
+   "topic": "Electromagnetism",
+   "q": "Describe the magnetic field around a straight wire carrying a current.",
+   "model_answer": "Circles centred on the wire. Reversing the current reverses the field direction."
+  },
+  {
+   "topic": "Magnetism",
+   "q": "Name two magnetic metals and two non-magnetic metals.",
+   "model_answer": "Magnetic: iron, steel, nickel, cobalt. Non-magnetic: e.g. copper, aluminium, brass, gold."
+  },
+  {
+   "topic": "Static charge",
+   "q": "A polythene rod rubbed with a cloth becomes negative. What happened to the cloth, and why?",
+   "model_answer": "Electrons moved from the cloth to the rod, so the cloth is left positively charged."
+  },
+  {
+   "topic": "Forces & friction",
+   "q": "Why must you hold the magnet closer to pull the car over a sandpaper patch?",
+   "model_answer": "Sandpaper gives more friction (0.3 N instead of 0.1 N). The pull is stronger closer, so it can beat the friction."
+  }
+ ],
+ "hard": [
+  {
+   "topic": "Electromagnetism",
+   "q": "State Fleming's left-hand rule. What does each finger show?",
+   "model_answer": "First finger = field, second finger = current, thumb = force (motion). Used for the motor effect."
+  },
+  {
+   "topic": "Electromagnetism",
+   "q": "How do you work out which end of a solenoid is the north pole?",
+   "model_answer": "Right-hand grip rule: curl your fingers the way the current flows; your thumb points to the north pole."
+  },
+  {
+   "topic": "Magnetic screening",
+   "q": "Explain how a steel sheet screens the car from the magnet.",
+   "model_answer": "Field lines are drawn into the steel (an easy path), so very few pass to the space behind it. The field there is weak."
+  },
+  {
+   "topic": "Electromagnetism",
+   "q": "A magnet is pushed into a coil connected to a meter. Give two ways to increase the induced e.m.f.",
+   "model_answer": "Any two: move the magnet faster, use a stronger magnet, use more turns on the coil."
+  },
+  {
+   "topic": "Magnetism",
+   "q": "Why does the car suddenly jump towards the magnet once it gets close?",
+   "model_answer": "Magnetic force rises very quickly as distance gets smaller, so up close the pull grows much bigger than friction."
+  },
+  {
+   "topic": "Electromagnetism",
+   "q": "Describe the magnetic field inside and outside a long solenoid.",
+   "model_answer": "Inside: strong and uniform, straight parallel lines. Outside: the same shape as a bar magnet's field."
+  },
+  {
+   "topic": "Static charge",
+   "q": "Why can't you charge a metal rod by rubbing it while holding it in your hand?",
+   "model_answer": "Metal is a conductor, so the charge flows through you to earth."
+  },
+  {
+   "topic": "Forces & friction",
+   "q": "A 50 g car has 0.3 N of friction and a 0.45 N magnetic pull. Find its acceleration.",
+   "model_answer": "Resultant force = 0.45 − 0.3 = 0.15 N. a = F ÷ m = 0.15 ÷ 0.05 = 3 m/s²."
+  },
+  {
+   "topic": "Electromagnetism",
+   "q": "Find the force on a 0.1 m wire carrying 2 A at right angles to a 0.5 T field.",
+   "model_answer": "F = BIL = 0.5 × 2 × 0.1 = 0.1 N."
+  },
+  {
+   "topic": "Static charge",
+   "q": "Two charged balloons are moved twice as far apart. What happens to the force between them?",
+   "model_answer": "It becomes ¼ as big, because electric force ∝ 1/r² (inverse square law)."
+  },
+  {
+   "topic": "Electromagnetism",
+   "q": "Explain how a simple d.c. motor keeps turning in the same direction.",
+   "model_answer": ""
+  },
+  {
+   "topic": "Magnetism",
+   "q": "Describe how you would use a plotting compass to draw the field around a bar magnet.",
+   "model_answer": ""
+  },
+  {
+   "topic": "Static charge",
+   "q": "Explain why the fuel hose is earthed when an aircraft is being refuelled.",
+   "model_answer": ""
+  },
+  {
+   "topic": "Forces & friction",
+   "q": "The car crosses the sandpaper at a steady speed. What can you say about the forces on it, and why?",
+   "model_answer": ""
+  },
+  {
+   "topic": "Magnetic screening",
+   "q": "Why does a steel plate screen a magnet's field, but an aluminium plate does not?",
+   "model_answer": ""
+  }
+ ]
+}
