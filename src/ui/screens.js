@@ -118,7 +118,7 @@ export function rulesSheet({ onClose }) {
     ['Magnetism', 'easy', 'Pull, never push', 'Press on the track to lower the magnet. It induces magnetism in the steel car, so it only ever attracts.'],
     ['Forces & friction', 'medium', 'Beat friction', 'The car moves only when the pull is bigger than friction: 0.10 N on the smooth track, 0.30 N on sandpaper.'],
     ['Magnetic screening', 'hard', 'Steel shields', 'Steel plates soak up the field. Behind them the pull drops to 15%, so steer around them.'],
-    ['Attraction & repulsion', 'easy', "Don't get too close", 'Within 2 cm the car jumps onto the magnet and your turn ends. Off the edge? Back to the last flag.'],
+    ['Attraction & repulsion', 'easy', "Don't get too close", 'If the car touches the magnet it sticks and your turn ends, so keep the magnet moving. Off the edge? Back to the last flag.'],
     ['Static charge', 'blue', 'Charge Pit Stop', 'Blue ⚡ zones: rub the balloon to charge it, then lift paper fuel. Each piece = +2 s.'],
     ['Electromagnetism', 'orange', 'Cards & points', 'Green = 1 pt, orange = 2, red = 3. Streaks give ×1.5 then ×2, answers under 5 s +1, first to finish +5.'],
   ];
@@ -224,6 +224,10 @@ function confetti() {
 }
 
 // ------------------------------------------------------------------ in-race HUD
+const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+function dieFace(n) { const d = h('div.die.pips', Array.from({ length: 9 }, () => h('i'))); setPips(d, n); return d; }
+function setPips(d, n) { [...d.children].forEach((p, i) => p.classList.toggle('on', PIPS[n].includes(i))); d.setAttribute('aria-label', 'Die showing ' + n); }
+
 export class Hud {
   constructor(root, cb) {
     this.cb = cb;
@@ -311,10 +315,27 @@ export class Hud {
       btn('.green.sm', 'dice', 'Roll the dice', null, { onclick: () => this.cb.onRoll() }), h('div.sub', { style: { fontSize: '13px', marginTop: '10px' } }, 'The total × 3 is your driving time')]);
   }
   waiting(P) { this.center([avatar(P.name, P.color), h('div.sub', 'Waiting for'), h('h2', P.name), h('div.sub', { style: { fontSize: '13px', marginTop: '8px' } }, 'Watch their car move live')]); }
+  // Real dice with pips: they shake for a moment, land on the rolled numbers, then the result stays on
+  // screen until the player puts the magnet down (presses pass straight through this box to the track).
   showDice(ev, P, mine) {
-    this.center([h('div.sub', `${P.name} rolled`), h('div.bigdice', h('div.die', ev.a), h('div.die', ev.b)), h('div.eqbig', `${ev.a} + ${ev.b} = ${ev.a + ev.b}`, ev.doubled ? ' × 2' : '', ' × 3 = ', h('b', `${ev.seconds} s`)),
-      mine ? h('div.sub', { style: { fontSize: '14px', marginTop: '10px' } }, 'Press near the car to lower the magnet') : null]);
-    const box = this.centerBox; setTimeout(() => { if (this.centerBox === box) this.clearCenter(); }, mine ? 1900 : 1500);
+    const d1 = dieFace(1), d2 = dieFace(1), eq = h('div.eqbig', { style: { opacity: 0, transition: 'opacity .3s' } }, `${ev.a} + ${ev.b} = ${ev.a + ev.b}`, ev.doubled ? ' × 2' : '', ' × 3 = ', h('b', `${ev.seconds} s`));
+    this.center([h('div.sub', `${P.name} rolled`), h('div.bigdice', d1, d2), eq,
+      mine ? h('div.press', { style: { opacity: 0, transition: 'opacity .3s' } }, 'Press the glowing ring in front of your car') : null]);
+    const box = this.centerBox; box.classList.add('passive');
+    d1.classList.add('rolling'); d2.classList.add('rolling');
+    const spin = setInterval(() => { setPips(d1, 1 + Math.floor(Math.random() * 6)); setPips(d2, 1 + Math.floor(Math.random() * 6)); }, 90);
+    setTimeout(() => {
+      clearInterval(spin); setPips(d1, ev.a); setPips(d2, ev.b); d1.classList.remove('rolling'); d2.classList.remove('rolling');
+      d1.animate([{ transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 450, easing: 'cubic-bezier(.34,1.56,.64,1)' });
+      d2.animate([{ transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 450, delay: 80, easing: 'cubic-bezier(.34,1.56,.64,1)' });
+      eq.style.opacity = 1; box.querySelector('.press')?.style.setProperty('opacity', 1);
+    }, 750);
+    this.diceBox = box;
+    // someone else's roll: just show it for a moment
+    if (!mine) setTimeout(() => { if (this.centerBox === box) this.clearCenter(); }, 2600);
+    else setTimeout(() => { if (this.centerBox === box) this.clearCenter(); }, 12000);
   }
+  // the driver touched the track: hide the dice
+  turnStarted() { if (this.centerBox && this.centerBox === this.diceBox) this.clearCenter(); }
   destroy() { this.layer.remove(); }
 }

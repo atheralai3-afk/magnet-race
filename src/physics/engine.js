@@ -9,11 +9,11 @@ export const PHYSICS = {
   magnetK: 4.2e-4,     // pull = K / (d^2 + soften^2)   ~0.40 N at 3 cm, ~0.11 N at 6 cm
   soften: 0.012,       // keeps the force finite near the magnet (magnet is held just above the board)
   forceCap: 1.2,
-  stickDist: 0.02,     // closer than this the car jumps onto the magnet -> turn over
+  stickDist: 0.012,    // the car only jumps onto the magnet when they nearly touch -> turn over
   screenFactor: 0.15,  // fraction of the pull that gets past a steel plate
-  rolling: 1.6,        // rolling/air resistance, N per (m/s): keeps a toy-car pace (~0.15 m/s with the magnet 4 cm ahead)
+  rolling: 4,          // rolling/axle resistance, N per (m/s): a toy-car pace of a few cm/s, slow enough to steer by hand
   dt: 1 / 120,
-  maxSpeed: 1.5,
+  maxSpeed: 0.5,
 };
 
 export function magnetPull(d, p = PHYSICS) {

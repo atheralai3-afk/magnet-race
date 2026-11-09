@@ -39,6 +39,7 @@ export class Renderer {
     this._background(); this._board(); this._track(); this._zones(); this._flags();
     const localIds = new Set(local.ids || []);
     for (const P of snap.players) if (!localIds.has(P.id) && P.magnet?.active) this._magnet(P.magnet, P.color, 0.45);
+    if (local.hint) this._hint(local.hint);
     for (const P of snap.players) this._car(P, snap.currentId === P.id || snap.mode === 'duel');
     for (const P of snap.players) {
       const m = P.magnet; if (!m?.active || !localIds.has(P.id)) continue;
@@ -121,6 +122,17 @@ export class Renderer {
     c.fillStyle = 'rgba(0,0,0,.35)'; c.font = `600 ${this.S(0.008)}px Inter, system-ui`; c.textAlign = 'center'; c.textBaseline = 'middle';
     const tw = c.measureText(P.name).width + 10; this._rr(this.X(car.x) - tw / 2, this.Y(car.y) - this.S(0.03), tw, this.S(0.011), 6); c.fill();
     c.fillStyle = '#fff'; c.fillText(P.name, this.X(car.x), this.Y(car.y) - this.S(0.0245));
+  }
+  _hint(p) {
+    const c = this.ctx, x = this.X(p.x), y = this.Y(p.y), t = performance.now() / 1000, r = this.S(0.012), k = (Math.sin(t * 4) + 1) / 2;
+    c.save();
+    c.fillStyle = `rgba(52,199,89,${0.18 + 0.12 * k})`; c.beginPath(); c.arc(x, y, r * (1.5 + 0.35 * k), 0, 7); c.fill();
+    c.strokeStyle = '#34C759'; c.lineWidth = 2.5; c.setLineDash([5, 4]); c.lineDashOffset = -t * 20; c.beginPath(); c.arc(x, y, r * (1.5 + 0.35 * k), 0, 7); c.stroke(); c.setLineDash([]);
+    c.fillStyle = '#34C759'; c.beginPath(); c.arc(x, y, 4, 0, 7); c.fill();
+    c.font = '700 12px Inter, system-ui'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    const label = 'Press here', tw = c.measureText(label).width + 16, ly = y - r * 2.3 - 10;
+    c.fillStyle = 'rgba(20,18,58,.8)'; this._rr(x - tw / 2, ly - 11, tw, 22, 11); c.fill(); c.fillStyle = '#7DFF9E'; c.fillText(label, x, ly + .5);
+    c.restore();
   }
   _magnet(m, color, alpha) {
     const c = this.ctx, x = this.X(m.x), y = this.Y(m.y), r = this.S(0.022);

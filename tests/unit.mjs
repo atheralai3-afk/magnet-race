@@ -7,6 +7,7 @@ import { QuestionDeck } from '../src/questions/engine.js';
 import { BANK } from '../src/questions/bank.js';
 import { Match } from '../src/game/match.js';
 import { rng } from '../src/util/rng.js';
+import { autoMagnet } from '../src/game/autodrive.js';
 import { LocalTransport } from '../src/net/transport.js';
 import { Room } from '../src/net/room.js';
 import { Matchmaker } from '../src/net/matchmaking.js';
@@ -43,7 +44,7 @@ ok(still(0.03, 'sand') > 0, 'closer magnet beats sandpaper (3 cm)');
   const m = { x: mid.x + (mid.x - c.x), y: mid.y + (mid.y - c.y), active: true }; w.setMagnet('a', m); w.update(1 / 60);
   ok(c.blocked && near(c.pullN, magnetPull(Math.hypot(m.x - c.x, m.y - c.y)) * PHYSICS.screenFactor, 0.02), 'steel plate screens the field');
 }
-{ const w = new World(track); const c = w.addCar('a', start); const p = track.pointAt(start.s + 0.012); w.setMagnet('a', { x: p.x, y: p.y, active: true }); w.update(1 / 60); ok(c.stuck, 'car sticks when the magnet is too close'); }
+{ const w = new World(track); const c = w.addCar('a', start); const p = track.pointAt(start.s + 0.008); w.setMagnet('a', { x: p.x, y: p.y, active: true }); w.update(1 / 60); ok(c.stuck, 'car sticks when the magnet is too close'); }
 
 // ---------- track
 ok(track.length > 1 && track.length < 2, 'lap length ~1.4 m');
@@ -67,7 +68,7 @@ ok(BANK.every(q => q.type === 'num' ? Number.isFinite(q.answer) : q.o[q.a] != nu
 
 // ---------- full matches
 function autoplay(m, ids, { lead = 0.035, wrong = () => false } = {}) {
-  for (let f = 0; f < 120 * 900 && m.phase !== 'over'; f++) {
+  for (let f = 0; f < 120 * 1800 && m.phase !== 'over'; f++) {
     if (m.phase === 'roll') m.roll();
     if (m.phase === 'pitstop') { m.pitDone(3); m.player(m.current.id).needRelease = false; continue; }
     const live = m.mode === 'duel' ? ids : [m.current?.id];
@@ -75,9 +76,7 @@ function autoplay(m, ids, { lead = 0.035, wrong = () => false } = {}) {
       if (!id || m.player(id).finished) continue;
       if (m.questions.has(id)) { const v = m.questions.get(id).view, l = m.deck.live.get(v.drawId); m.answer(wrong() ? -1 : v.type === 'num' ? l.q.answer : l.correctIndex); continue; }
       if (m.player(id).needRelease) { m.setMagnet(id, { x: 0, y: 0, active: false }); continue; }
-      const c = m.car(id), p = track.pointAt(c.s + lead); let ox = 0, oy = 0;
-      for (const pl of track.plates()) if (track.forward(c.s, pl.s) < 0.08 || track.forward(pl.s, c.s) < 0.03) { ox = -pl.side * p.nx * 0.02; oy = -pl.side * p.ny * 0.02; }
-      m.setMagnet(id, { x: p.x + ox, y: p.y + oy, active: true });
+      m.setMagnet(id, autoMagnet(track, m.car(id)));
     }
     m.update(1 / 120);
   }
@@ -109,12 +108,12 @@ function autoplay(m, ids, { lead = 0.035, wrong = () => false } = {}) {
   const s = rA.start(); await tick();
   const sA = new NetSession(tA, { code: rA.code, start: s, track }), sB = new NetSession(tB, { code: rA.code, start: rB.started, track });
   const mA = await sA.open(), mB = await sB.open(); await tick();
-  for (let f = 0; f < 60 * 240 && mA.phase !== 'over'; f++) {
+  for (let f = 0; f < 60 * 600 && mA.phase !== 'over'; f++) {
     for (const [ss, m, id] of [[sA, mA, 'A'], [sB, mB, 'B']]) {
       if (m.phase === 'roll' && m.current.id === id) ss.roll();
       if (m.phase === 'pitstop' && m.current.id === id) { ss.pitDone(2); ss.setMagnet({ x: 0, y: 0, active: false }); }
       if (m.phase === 'question' && m.question) { const v = m.question.view, l = m.deck.live.get(v.drawId); ss.answer(v.type === 'num' ? l.q.answer : l.correctIndex); }
-      if (m.phase === 'turn' && m.current.id === id) { const c = m.car(id), p = track.pointAt(c.s + 0.035); let ox = 0, oy = 0; for (const pl of track.plates()) if (track.forward(c.s, pl.s) < 0.08 || track.forward(pl.s, c.s) < 0.03) { ox = -pl.side * p.nx * 0.02; oy = -pl.side * p.ny * 0.02; } ss.setMagnet({ x: p.x + ox, y: p.y + oy, active: true }); }
+      if (m.phase === 'turn' && m.current.id === id) ss.setMagnet(autoMagnet(track, m.car(id)));
       ss.update(1 / 60);
     }
     await tick();

@@ -136,7 +136,7 @@ export function labScreen() {
         const d = MAG_X - car.x, pull = pullAt(d), fr = friction(), sdt = dt / 4;
         if (car.v < 1e-4 && pull <= fr) { car.v = 0; car.running = false; break; }
         car.v = Math.max(0, car.v + (pull - fr - PHYSICS.rolling * car.v) / m * sdt); car.x += car.v * sdt;
-        if (MAG_X - car.x < PHYSICS.stickDist && !P.shield) { car.stuck = true; car.x = MAG_X - 0.012; car.v = 0; sound.stick(); break; }
+        if (MAG_X - car.x < PHYSICS.stickDist && !P.shield) { car.stuck = true; car.x = MAG_X - 0.009; car.v = 0; sound.stick(); break; }
         if (P.shield && MAG_X - car.x < 0.014) { car.x = MAG_X - 0.014; car.v = 0; car.running = false; break; }
       }
       update();

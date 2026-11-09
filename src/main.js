@@ -198,7 +198,10 @@ function frame(now) {
   for (const ev of events) handleEvent(ev);
   if (!app.match) return; // the game ended inside an event handler
   const snap = m.snapshot();
-  try { renderer.draw(snap, { ids: [...app.inputIds] }); } catch (e) { console.warn(e); renderer.resize(); }
+  // before the turn starts, show where to put the magnet down
+  let hint = null;
+  if (id && m.mode === 'turns' && m.phase === 'turn' && m.turn && !m.turn.started && !app.magnet.active) { const c0 = m.car(id), q = track.pointAt(c0.s + 0.04); hint = { x: q.x, y: q.y }; }
+  try { renderer.draw(snap, { ids: [...app.inputIds], hint }); } catch (e) { console.warn(e); renderer.resize(); }
   const shownId = id || snap.currentId || [...app.inputIds][0] || snap.players[0].id;
   app.hud.update(snap, shownId, track);
   if (renderer.w !== app.placedW || renderer.h !== app.placedH) { app.placedW = renderer.w; app.placedH = renderer.h; app.hud.place(renderer); }
@@ -215,6 +218,7 @@ function handleEvent(ev) {
   const m = app.match, hud = app.hud, P = ev.playerId ? m.player(ev.playerId) : null, mine = !!P && app.inputIds.has(P.id);
   switch (ev.type) {
     case 'dice': sound.dice(); hud.showDice(ev, P, mine); break;
+    case 'turnGo': hud.turnStarted(); break;
     case 'checkpoint': if (ev.index && mine) { sound.checkpoint(); hud.toast(`Flag ${ev.index + 1} — checkpoint saved`, 1400); } break;
     case 'lap': (ev.finished ? sound.fanfare : sound.lap)(); haptic(ev.finished ? [30, 40, 30, 40, 60] : 30);
       hud.toast(ev.finished ? `${P.name} finished the race!${ev.bonus ? ` +${ev.bonus} lap bonus` : ''}` : `${P.name}: lap ${ev.lap} complete`, 2800); break;
@@ -274,6 +278,9 @@ function showResults(ranking) {
 function setMag(e, active) { const w = renderer.toWorld(e.clientX, e.clientY); app.magnet = { x: w.x, y: w.y, active }; }
 canvas.addEventListener('pointerdown', e => {
   if (app.state !== 'race' || app.q || app.pit || ui.querySelector('.dim:not(.out)')) return;
+  // pressing right on top of your own car would make it stick instantly: nudge the player instead
+  const id = inputPlayerId(), car = id && app.match.car(id), w = renderer.toWorld(e.clientX, e.clientY);
+  if (car && Math.hypot(w.x - car.x, w.y - car.y) < 0.022) { app.hud?.toast('Too close! Press a little in front of your car'); haptic(30); return; }
   canvas.setPointerCapture(e.pointerId); setMag(e, true);
 });
 canvas.addEventListener('pointermove', e => { if (app.state === 'race' && app.magnet.active) setMag(e, true); });

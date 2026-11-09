@@ -22,7 +22,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #14123A; c
 body.menu #game { filter: blur(8px) saturate(1.15) brightness(.92); transform: scale(1.05); }
 #ui { position: fixed; inset: 0; pointer-events: none; }
 #ui > * { pointer-events: auto; }
-.layer { position: absolute; inset: 0; pointer-events: none; }
+/* the race HUD layer covers the screen but must let presses through to the track (only its panels are clickable) */
+#ui > .layer, .layer { position: absolute; inset: 0; pointer-events: none; }
 .layer > * { pointer-events: auto; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; text-align: left; }
 input { font: inherit; color: inherit; user-select: text; -webkit-user-select: text; }
@@ -267,7 +268,16 @@ body.sheet-open .menu-wrap, body.sheet-open .tabbar { transform: scale(.95); fil
 .center h2 { font-size: 30px; font-weight: 800; letter-spacing: -.025em; }
 .center .btn { margin: 18px auto 0; }
 .bigdice { display: flex; gap: 18px; justify-content: center; margin: 6px 0 12px; perspective: 400px; }
-.bigdice .die { width: 64px; height: 64px; border-radius: 18px; font-size: 32px; animation: tumble .7s cubic-bezier(.2,.8,.3,1.2); }
+.bigdice .die { width: 78px; height: 78px; border-radius: 20px; animation: tumble .9s cubic-bezier(.2,.8,.3,1.15) backwards; }
+.die.pips { display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); padding: 11px; gap: 0; }
+.die.pips i { width: 62%; height: 62%; margin: auto; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #7D7BFF, #3C3489); box-shadow: inset 0 1px 1px rgba(255,255,255,.35); opacity: 0; }
+.die.pips i.on { opacity: 1; }
+.die.rolling { animation: shake .12s linear infinite !important; }
+@keyframes shake { 0% { transform: rotate(-14deg) translateY(-4px); } 50% { transform: rotate(14deg) translateY(2px); } 100% { transform: rotate(-14deg) translateY(-4px); } }
+.center.passive { pointer-events: none; }
+.center .press { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 8px 14px; border-radius: 999px; background: rgba(52,199,89,.22); border: 1px solid rgba(52,199,89,.5); font-size: 14px; font-weight: 700; animation: breathe 1.6s ease-in-out infinite; }
+@keyframes breathe { 50% { transform: scale(1.05); background: rgba(52,199,89,.34); } }
+@media (max-height: 520px) { .bigdice .die { width: 52px; height: 52px; border-radius: 14px; } .die.pips { padding: 7px; } .bigdice { margin: 2px 0 6px; } }
 .bigdice .die:nth-child(2) { animation-delay: .08s; animation-duration: .8s; }
 @keyframes tumble { 0% { transform: translateY(-60px) rotateX(540deg) rotateZ(200deg) scale(.5); opacity: 0; } 70% { opacity: 1; } }
 .center .eqbig { font-size: 20px; font-weight: 700; }
@@ -622,11 +632,11 @@ const PHYSICS = {
   magnetK: 4.2e-4,     // pull = K / (d^2 + soften^2)   ~0.40 N at 3 cm, ~0.11 N at 6 cm
   soften: 0.012,       // keeps the force finite near the magnet (magnet is held just above the board)
   forceCap: 1.2,
-  stickDist: 0.02,     // closer than this the car jumps onto the magnet -> turn over
+  stickDist: 0.012,    // the car only jumps onto the magnet when they nearly touch -> turn over
   screenFactor: 0.15,  // fraction of the pull that gets past a steel plate
-  rolling: 1.6,        // rolling/air resistance, N per (m/s): keeps a toy-car pace (~0.15 m/s with the magnet 4 cm ahead)
+  rolling: 4,          // rolling/axle resistance, N per (m/s): a toy-car pace of a few cm/s, slow enough to steer by hand
   dt: 1 / 120,
-  maxSpeed: 1.5,
+  maxSpeed: 0.5,
 };
 
 function magnetPull(d, p = PHYSICS) {
@@ -1235,6 +1245,7 @@ class Renderer {
     this._background(); this._board(); this._track(); this._zones(); this._flags();
     const localIds = new Set(local.ids || []);
     for (const P of snap.players) if (!localIds.has(P.id) && P.magnet?.active) this._magnet(P.magnet, P.color, 0.45);
+    if (local.hint) this._hint(local.hint);
     for (const P of snap.players) this._car(P, snap.currentId === P.id || snap.mode === 'duel');
     for (const P of snap.players) {
       const m = P.magnet; if (!m?.active || !localIds.has(P.id)) continue;
@@ -1317,6 +1328,17 @@ class Renderer {
     c.fillStyle = 'rgba(0,0,0,.35)'; c.font = `600 ${this.S(0.008)}px Inter, system-ui`; c.textAlign = 'center'; c.textBaseline = 'middle';
     const tw = c.measureText(P.name).width + 10; this._rr(this.X(car.x) - tw / 2, this.Y(car.y) - this.S(0.03), tw, this.S(0.011), 6); c.fill();
     c.fillStyle = '#fff'; c.fillText(P.name, this.X(car.x), this.Y(car.y) - this.S(0.0245));
+  }
+  _hint(p) {
+    const c = this.ctx, x = this.X(p.x), y = this.Y(p.y), t = performance.now() / 1000, r = this.S(0.012), k = (Math.sin(t * 4) + 1) / 2;
+    c.save();
+    c.fillStyle = `rgba(52,199,89,${0.18 + 0.12 * k})`; c.beginPath(); c.arc(x, y, r * (1.5 + 0.35 * k), 0, 7); c.fill();
+    c.strokeStyle = '#34C759'; c.lineWidth = 2.5; c.setLineDash([5, 4]); c.lineDashOffset = -t * 20; c.beginPath(); c.arc(x, y, r * (1.5 + 0.35 * k), 0, 7); c.stroke(); c.setLineDash([]);
+    c.fillStyle = '#34C759'; c.beginPath(); c.arc(x, y, 4, 0, 7); c.fill();
+    c.font = '700 12px Inter, system-ui'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    const label = 'Press here', tw = c.measureText(label).width + 16, ly = y - r * 2.3 - 10;
+    c.fillStyle = 'rgba(20,18,58,.8)'; this._rr(x - tw / 2, ly - 11, tw, 22, 11); c.fill(); c.fillStyle = '#7DFF9E'; c.fillText(label, x, ly + .5);
+    c.restore();
   }
   _magnet(m, color, alpha) {
     const c = this.ctx, x = this.X(m.x), y = this.Y(m.y), r = this.S(0.022);
@@ -1954,7 +1976,7 @@ function rulesSheet({ onClose }) {
     ['Magnetism', 'easy', 'Pull, never push', 'Press on the track to lower the magnet. It induces magnetism in the steel car, so it only ever attracts.'],
     ['Forces & friction', 'medium', 'Beat friction', 'The car moves only when the pull is bigger than friction: 0.10 N on the smooth track, 0.30 N on sandpaper.'],
     ['Magnetic screening', 'hard', 'Steel shields', 'Steel plates soak up the field. Behind them the pull drops to 15%, so steer around them.'],
-    ['Attraction & repulsion', 'easy', "Don't get too close", 'Within 2 cm the car jumps onto the magnet and your turn ends. Off the edge? Back to the last flag.'],
+    ['Attraction & repulsion', 'easy', "Don't get too close", 'If the car touches the magnet it sticks and your turn ends, so keep the magnet moving. Off the edge? Back to the last flag.'],
     ['Static charge', 'blue', 'Charge Pit Stop', 'Blue ⚡ zones: rub the balloon to charge it, then lift paper fuel. Each piece = +2 s.'],
     ['Electromagnetism', 'orange', 'Cards & points', 'Green = 1 pt, orange = 2, red = 3. Streaks give ×1.5 then ×2, answers under 5 s +1, first to finish +5.'],
   ];
@@ -2060,6 +2082,10 @@ function confetti() {
 }
 
 // ------------------------------------------------------------------ in-race HUD
+const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+function dieFace(n) { const d = h('div.die.pips', Array.from({ length: 9 }, () => h('i'))); setPips(d, n); return d; }
+function setPips(d, n) { [...d.children].forEach((p, i) => p.classList.toggle('on', PIPS[n].includes(i))); d.setAttribute('aria-label', 'Die showing ' + n); }
+
 class Hud {
   constructor(root, cb) {
     this.cb = cb;
@@ -2147,11 +2173,28 @@ class Hud {
       btn('.green.sm', 'dice', 'Roll the dice', null, { onclick: () => this.cb.onRoll() }), h('div.sub', { style: { fontSize: '13px', marginTop: '10px' } }, 'The total × 3 is your driving time')]);
   }
   waiting(P) { this.center([avatar(P.name, P.color), h('div.sub', 'Waiting for'), h('h2', P.name), h('div.sub', { style: { fontSize: '13px', marginTop: '8px' } }, 'Watch their car move live')]); }
+  // Real dice with pips: they shake for a moment, land on the rolled numbers, then the result stays on
+  // screen until the player puts the magnet down (presses pass straight through this box to the track).
   showDice(ev, P, mine) {
-    this.center([h('div.sub', `${P.name} rolled`), h('div.bigdice', h('div.die', ev.a), h('div.die', ev.b)), h('div.eqbig', `${ev.a} + ${ev.b} = ${ev.a + ev.b}`, ev.doubled ? ' × 2' : '', ' × 3 = ', h('b', `${ev.seconds} s`)),
-      mine ? h('div.sub', { style: { fontSize: '14px', marginTop: '10px' } }, 'Press near the car to lower the magnet') : null]);
-    const box = this.centerBox; setTimeout(() => { if (this.centerBox === box) this.clearCenter(); }, mine ? 1900 : 1500);
+    const d1 = dieFace(1), d2 = dieFace(1), eq = h('div.eqbig', { style: { opacity: 0, transition: 'opacity .3s' } }, `${ev.a} + ${ev.b} = ${ev.a + ev.b}`, ev.doubled ? ' × 2' : '', ' × 3 = ', h('b', `${ev.seconds} s`));
+    this.center([h('div.sub', `${P.name} rolled`), h('div.bigdice', d1, d2), eq,
+      mine ? h('div.press', { style: { opacity: 0, transition: 'opacity .3s' } }, 'Press the glowing ring in front of your car') : null]);
+    const box = this.centerBox; box.classList.add('passive');
+    d1.classList.add('rolling'); d2.classList.add('rolling');
+    const spin = setInterval(() => { setPips(d1, 1 + Math.floor(Math.random() * 6)); setPips(d2, 1 + Math.floor(Math.random() * 6)); }, 90);
+    setTimeout(() => {
+      clearInterval(spin); setPips(d1, ev.a); setPips(d2, ev.b); d1.classList.remove('rolling'); d2.classList.remove('rolling');
+      d1.animate([{ transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 450, easing: 'cubic-bezier(.34,1.56,.64,1)' });
+      d2.animate([{ transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 450, delay: 80, easing: 'cubic-bezier(.34,1.56,.64,1)' });
+      eq.style.opacity = 1; box.querySelector('.press')?.style.setProperty('opacity', 1);
+    }, 750);
+    this.diceBox = box;
+    // someone else's roll: just show it for a moment
+    if (!mine) setTimeout(() => { if (this.centerBox === box) this.clearCenter(); }, 2600);
+    else setTimeout(() => { if (this.centerBox === box) this.clearCenter(); }, 12000);
   }
+  // the driver touched the track: hide the dice
+  turnStarted() { if (this.centerBox && this.centerBox === this.diceBox) this.clearCenter(); }
   destroy() { this.layer.remove(); }
 }
 
@@ -2460,7 +2503,7 @@ function labScreen() {
         const d = MAG_X - car.x, pull = pullAt(d), fr = friction(), sdt = dt / 4;
         if (car.v < 1e-4 && pull <= fr) { car.v = 0; car.running = false; break; }
         car.v = Math.max(0, car.v + (pull - fr - PHYSICS.rolling * car.v) / m * sdt); car.x += car.v * sdt;
-        if (MAG_X - car.x < PHYSICS.stickDist && !P.shield) { car.stuck = true; car.x = MAG_X - 0.012; car.v = 0; sound.stick(); break; }
+        if (MAG_X - car.x < PHYSICS.stickDist && !P.shield) { car.stuck = true; car.x = MAG_X - 0.009; car.v = 0; sound.stick(); break; }
         if (P.shield && MAG_X - car.x < 0.014) { car.x = MAG_X - 0.014; car.v = 0; car.running = false; break; }
       }
       update();
@@ -2695,7 +2738,10 @@ function frame(now) {
   for (const ev of events) handleEvent(ev);
   if (!app.match) return; // the game ended inside an event handler
   const snap = m.snapshot();
-  try { renderer.draw(snap, { ids: [...app.inputIds] }); } catch (e) { console.warn(e); renderer.resize(); }
+  // before the turn starts, show where to put the magnet down
+  let hint = null;
+  if (id && m.mode === 'turns' && m.phase === 'turn' && m.turn && !m.turn.started && !app.magnet.active) { const c0 = m.car(id), q = track.pointAt(c0.s + 0.04); hint = { x: q.x, y: q.y }; }
+  try { renderer.draw(snap, { ids: [...app.inputIds], hint }); } catch (e) { console.warn(e); renderer.resize(); }
   const shownId = id || snap.currentId || [...app.inputIds][0] || snap.players[0].id;
   app.hud.update(snap, shownId, track);
   if (renderer.w !== app.placedW || renderer.h !== app.placedH) { app.placedW = renderer.w; app.placedH = renderer.h; app.hud.place(renderer); }
@@ -2712,6 +2758,7 @@ function handleEvent(ev) {
   const m = app.match, hud = app.hud, P = ev.playerId ? m.player(ev.playerId) : null, mine = !!P && app.inputIds.has(P.id);
   switch (ev.type) {
     case 'dice': sound.dice(); hud.showDice(ev, P, mine); break;
+    case 'turnGo': hud.turnStarted(); break;
     case 'checkpoint': if (ev.index && mine) { sound.checkpoint(); hud.toast(`Flag ${ev.index + 1} — checkpoint saved`, 1400); } break;
     case 'lap': (ev.finished ? sound.fanfare : sound.lap)(); haptic(ev.finished ? [30, 40, 30, 40, 60] : 30);
       hud.toast(ev.finished ? `${P.name} finished the race!${ev.bonus ? ` +${ev.bonus} lap bonus` : ''}` : `${P.name}: lap ${ev.lap} complete`, 2800); break;
@@ -2771,6 +2818,9 @@ function showResults(ranking) {
 function setMag(e, active) { const w = renderer.toWorld(e.clientX, e.clientY); app.magnet = { x: w.x, y: w.y, active }; }
 canvas.addEventListener('pointerdown', e => {
   if (app.state !== 'race' || app.q || app.pit || ui.querySelector('.dim:not(.out)')) return;
+  // pressing right on top of your own car would make it stick instantly: nudge the player instead
+  const id = inputPlayerId(), car = id && app.match.car(id), w = renderer.toWorld(e.clientX, e.clientY);
+  if (car && Math.hypot(w.x - car.x, w.y - car.y) < 0.022) { app.hud?.toast('Too close! Press a little in front of your car'); haptic(30); return; }
   canvas.setPointerCapture(e.pointerId); setMag(e, true);
 });
 canvas.addEventListener('pointermove', e => { if (app.state === 'race' && app.magnet.active) setMag(e, true); });
