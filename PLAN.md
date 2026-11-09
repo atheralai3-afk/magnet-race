@@ -36,7 +36,13 @@ src/
 assets/               icons/art (reuse design/ios_art.py output as inline SVG)
 ```
 
-## STATUS (9 Nov): PHASE 1 DONE ✅
+## STATUS (9 Nov, late): PHASE 2 DONE ✅
+Liquid Glass UI (home with tabs Play/Lab/Rules, lobby, duel search, race HUD, question sheet, results with confetti),
+Charge Pit Stop mini-game (fuel zones, +2 s per paper piece), Physics Lab sandbox, sounds + haptics, daily challenges + local stats,
+compact layouts for phones (portrait + sideways), PWA (manifest, icons, offline service worker). 43 unit checks + full browser game pass.
+Left: deploy to GitHub Pages (needs the user's repo), test online play with real Supabase keys.
+
+## PHASE 1 STATUS: DONE ✅
 All 6 items below are built and tested (`node tests/unit.mjs` → 39 passed; `node tests/e2e.cjs` plays a full game).
 Notes for phase 2:
 - Online play is implemented but untested against a real Supabase project (no network here). Test it once the user gives keys.

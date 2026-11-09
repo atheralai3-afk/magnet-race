@@ -69,6 +69,7 @@ ok(BANK.every(q => q.type === 'num' ? Number.isFinite(q.answer) : q.o[q.a] != nu
 function autoplay(m, ids, { lead = 0.035, wrong = () => false } = {}) {
   for (let f = 0; f < 120 * 900 && m.phase !== 'over'; f++) {
     if (m.phase === 'roll') m.roll();
+    if (m.phase === 'pitstop') { m.pitDone(3); m.player(m.current.id).needRelease = false; continue; }
     const live = m.mode === 'duel' ? ids : [m.current?.id];
     for (const id of live) {
       if (!id || m.player(id).finished) continue;
@@ -82,6 +83,16 @@ function autoplay(m, ids, { lead = 0.035, wrong = () => false } = {}) {
   }
   return m;
 }
+{ // Charge Pit Stop: a fuel zone pauses the turn, then each paper piece adds 2 s
+  const m = new Match({ players: [{ id: 'a', name: 'A' }], track, laps: 1, seed: 2 }); m.start(); m.roll();
+  const fz = track.zonesOfType('fuel')[0], c = m.car('a'), p0 = track.pointAt(fz.s - 0.004);
+  Object.assign(c, { x: p0.x, y: p0.y }); m.world.placeOnTrack(c); Object.assign(m.player('a'), { cp: 2, lastCp: 1 });
+  const p1 = track.pointAt(fz.s + 0.035); m.setMagnet('a', { x: p1.x, y: p1.y, active: true });
+  for (let i = 0; i < 240 && m.phase !== 'pitstop'; i++) m.update(1 / 120);
+  ok(m.phase === 'pitstop', 'fuel zone opens the Charge Pit Stop');
+  const tp = m.turn.timeLeft; m.update(1); ok(m.turn.timeLeft === tp, 'timer pauses during the pit stop');
+  const ev = m.pitDone(3); ok(ev && ev.add === 6 && m.phase === 'turn' && Math.abs(m.turn.timeLeft - tp - 6) < 1e-9, '3 paper pieces = +6 s');
+  ok(m.pitDone(3) === null, 'pit stop can only be cashed in once'); }
 { const m = new Match({ players: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }], track, laps: 2, seed: 11 }); m.start(); let k = 0; autoplay(m, [], { wrong: () => ++k % 4 === 0 });
   ok(m.phase === 'over', '3-player turn game reaches the end'); ok(m.ranking[0].score >= m.ranking[1].score, 'ranking sorted by points');
   ok(m.log.some(e => e.type === 'lap' && e.bonus === 5), 'first finisher gets the lap bonus'); }
@@ -101,6 +112,7 @@ function autoplay(m, ids, { lead = 0.035, wrong = () => false } = {}) {
   for (let f = 0; f < 60 * 240 && mA.phase !== 'over'; f++) {
     for (const [ss, m, id] of [[sA, mA, 'A'], [sB, mB, 'B']]) {
       if (m.phase === 'roll' && m.current.id === id) ss.roll();
+      if (m.phase === 'pitstop' && m.current.id === id) { ss.pitDone(2); ss.setMagnet({ x: 0, y: 0, active: false }); }
       if (m.phase === 'question' && m.question) { const v = m.question.view, l = m.deck.live.get(v.drawId); ss.answer(v.type === 'num' ? l.q.answer : l.correctIndex); }
       if (m.phase === 'turn' && m.current.id === id) { const c = m.car(id), p = track.pointAt(c.s + 0.035); let ox = 0, oy = 0; for (const pl of track.plates()) if (track.forward(c.s, pl.s) < 0.08 || track.forward(pl.s, c.s) < 0.03) { ox = -pl.side * p.nx * 0.02; oy = -pl.side * p.ny * 0.02; } ss.setMagnet({ x: p.x + ox, y: p.y + oy, active: true }); }
       ss.update(1 / 60);

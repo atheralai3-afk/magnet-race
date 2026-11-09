@@ -65,47 +65,54 @@ export class World {
   stepCar(c, dt) {
     const p = this.p, m = this.magnets.get(c.id);
     const prevS = c.s;
-    let fx = 0, fy = 0, pull = 0, d = Infinity, blocked = false;
-    if (c.frozen > 0) { c.frozen = Math.max(0, c.frozen - dt); c.vx = c.vy = 0; }
-    else if (m && m.active) {
-      const dx = m.x - c.x, dy = m.y - c.y; d = Math.hypot(dx, dy);
-      blocked = this.plateBetween(c, m);
-      pull = magnetPull(d, p) * (blocked ? p.screenFactor : 1);
-      if (d > 1e-6) { fx = pull * dx / d; fy = pull * dy / d; }
-      if (d < p.stickDist && !blocked) c.stuck = true;
-    }
+    const blocked = !!(m && m.active && c.frozen <= 0 && this.plateBetween(c, m));
     const mods = this.mods.get(c.id) || {};
     c.surface = this.track.surfaceAt(c.s);
     const mu = c.surface === 'sand' && !mods.skipSand ? p.muSand : p.muSmooth;
-    const N = p.mass * p.g, fr = mu * N;
-    let speed = Math.hypot(c.vx, c.vy), resultant = 0;
-    if (c.frozen > 0) { /* held */ }
-    else if (speed < 1e-4) {
-      if (pull > fr) { // static friction beaten -> starts moving along the pull
-        resultant = pull - fr;
-        const ax = (fx / pull) * resultant / p.mass, ay = (fy / pull) * resultant / p.mass;
-        c.vx += ax * dt; c.vy += ay * dt;
-      } else { c.vx = c.vy = 0; }
-    } else {
-      const ux = c.vx / speed, uy = c.vy / speed;
-      // kinetic friction + rolling resistance oppose the velocity
-      const rx = fx - fr * ux - p.rolling * c.vx, ry = fy - fr * uy - p.rolling * c.vy;
-      resultant = Math.hypot(rx, ry);
-      const nvx = c.vx + rx / p.mass * dt, nvy = c.vy + ry / p.mass * dt;
-      // friction cannot reverse the motion by itself
-      if (nvx * ux + nvy * uy < 0 && pull <= fr) { c.vx = c.vy = 0; } else { c.vx = nvx; c.vy = nvy; }
-    }
-    speed = Math.hypot(c.vx, c.vy);
-    if (speed > p.maxSpeed) { c.vx *= p.maxSpeed / speed; c.vy *= p.maxSpeed / speed; speed = p.maxSpeed; }
-    c.x += c.vx * dt; c.y += c.vy * dt;
-    if (speed > 0.02) c.heading = Math.atan2(c.vy, c.vx);
-    else if (pull > 0 && d < Infinity) { const target = Math.atan2(fy, fx); c.heading += angleDiff(c.heading, target) * 0.1; }
+    if (integrate(c, m, mu, blocked, p, dt)) c.stuck = true;
     const pr = this.placeOnTrack(c);
     c.off = this.track.isOffTrack(pr.lat);
-    c.pullN = pull; c.frictionN = speed > 1e-4 || pull > fr ? fr : Math.min(pull, fr); c.resultantN = resultant;
-    c.speed = speed; c.dist = d; c.blocked = blocked;
     return { car: c, prevS, s: c.s };
   }
+}
+
+// Advances one car by dt under the magnet's pull, friction and rolling resistance.
+// Shared by the race (World) and the Physics Lab so both obey exactly the same physics.
+// Returns true if the car got close enough to jump onto the magnet.
+export function integrate(c, m, mu, blocked, p, dt) {
+  let fx = 0, fy = 0, pull = 0, d = Infinity, stuck = false;
+  if (c.frozen > 0) { c.frozen = Math.max(0, c.frozen - dt); c.vx = c.vy = 0; }
+  else if (m && m.active) {
+    const dx = m.x - c.x, dy = m.y - c.y; d = Math.hypot(dx, dy);
+    pull = magnetPull(d, p) * (blocked ? p.screenFactor : 1);
+    if (d > 1e-6) { fx = pull * dx / d; fy = pull * dy / d; }
+    if (d < p.stickDist && !blocked) stuck = true;
+  }
+  const N = p.mass * p.g, fr = mu * N;
+  let speed = Math.hypot(c.vx, c.vy), resultant = 0;
+  if (c.frozen > 0) { /* held */ }
+  else if (speed < 1e-4) {
+    if (pull > fr) { // static friction beaten -> starts moving along the pull
+      resultant = pull - fr;
+      c.vx += (fx / pull) * resultant / p.mass * dt; c.vy += (fy / pull) * resultant / p.mass * dt;
+    } else { c.vx = c.vy = 0; }
+  } else {
+    const ux = c.vx / speed, uy = c.vy / speed;
+    // kinetic friction + rolling resistance oppose the velocity
+    const rx = fx - fr * ux - p.rolling * c.vx, ry = fy - fr * uy - p.rolling * c.vy;
+    resultant = Math.hypot(rx, ry);
+    const nvx = c.vx + rx / p.mass * dt, nvy = c.vy + ry / p.mass * dt;
+    // friction cannot reverse the motion by itself
+    if (nvx * ux + nvy * uy < 0 && pull <= fr) { c.vx = c.vy = 0; } else { c.vx = nvx; c.vy = nvy; }
+  }
+  speed = Math.hypot(c.vx, c.vy);
+  if (speed > p.maxSpeed) { c.vx *= p.maxSpeed / speed; c.vy *= p.maxSpeed / speed; speed = p.maxSpeed; }
+  c.x += c.vx * dt; c.y += c.vy * dt;
+  if (speed > 0.02) c.heading = Math.atan2(c.vy, c.vx);
+  else if (pull > 0 && d < Infinity) c.heading += angleDiff(c.heading, Math.atan2(fy, fx)) * 0.1;
+  c.pullN = pull; c.frictionN = speed > 1e-4 || pull > fr ? fr : Math.min(pull, fr); c.resultantN = resultant;
+  c.speed = speed; c.dist = d; c.blocked = blocked; c.accel = resultant / p.mass;
+  return stuck;
 }
 
 export function angleDiff(a, b) { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }

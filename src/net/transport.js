@@ -69,7 +69,7 @@ export class SupabaseTransport {
 // Builds a transport from config: Supabase when configured, otherwise local.
 export async function makeTransport(config, clientId) {
   if (config?.supabaseUrl && config?.supabaseAnonKey) {
-    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
     return new SupabaseTransport(createClient(config.supabaseUrl, config.supabaseAnonKey), clientId);
   }
   return new LocalTransport(clientId);

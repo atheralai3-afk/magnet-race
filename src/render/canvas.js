@@ -114,6 +114,7 @@ export class Renderer {
     if (car.frozen > 0) { c.strokeStyle = 'rgba(255,255,255,.8)'; c.lineWidth = 2; c.setLineDash([3, 3]); c.beginPath(); c.arc(0, 0, L * .7, 0, 7); c.stroke(); }
     c.restore();
     // name tag
+    if (!P.name) return;
     c.fillStyle = 'rgba(0,0,0,.35)'; c.font = `600 ${this.S(0.008)}px Inter, system-ui`; c.textAlign = 'center'; c.textBaseline = 'middle';
     const tw = c.measureText(P.name).width + 10; this._rr(this.X(car.x) - tw / 2, this.Y(car.y) - this.S(0.03), tw, this.S(0.011), 6); c.fill();
     c.fillStyle = '#fff'; c.fillText(P.name, this.X(car.x), this.Y(car.y) - this.S(0.0245));

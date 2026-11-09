@@ -40,6 +40,7 @@ export class NetSession {
   }
   roll() { return this.match.roll(); } // the dice event is broadcast by the next update()
   answer(v) { return this.match.answer(v); }
+  pitDone(n) { return this.match.pitDone(n); }
   usePowerup(kind) { return this.match.usePowerup(this.me, kind); }
   setMagnet(mag) { this.match.setMagnet(this.me, mag); }
   close() { this.ch?.leave(); }

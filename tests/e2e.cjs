@@ -8,10 +8,11 @@ const root = path.resolve(__dirname, '..');
   const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--allow-file-access-from-files'] });
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, ...(video ? { recordVideo: { dir: '/tmp/mrvid', size: { width: 1280, height: 800 } } } : {}) });
   const page = await ctx.newPage();
-  const errors = []; page.on('pageerror', e => errors.push(e.message));
-  await page.goto('file://' + root + '/index.html' + (process.env.LAPS ? '?laps=' + process.env.LAPS : '')); await page.waitForTimeout(1200);
-  await page.click('text=Pass & Play'); await page.waitForTimeout(500);
-  const inputs = await page.$$('.names input'); await inputs[0].fill('Aziz'); await inputs[1].fill('Malika');
+  const errors = []; page.on('pageerror', e => errors.push(e.message)); page.on('console', m => { if (m.type() === 'error' && !/ERR_TUNNEL|fonts\.g/.test(m.text())) errors.push(m.text()); });
+  if (!process.env.NOHOME) await page.goto('http://localhost:8765/index.html'), await page.waitForTimeout(1200), await page.screenshot({ path: '/tmp/mr_home.png' });
+  await page.goto('http://localhost:8765/index.html' + (process.env.LAPS ? '?laps=' + process.env.LAPS : '')); await page.waitForTimeout(1200);
+  await page.click('text=Pass & Play'); await page.waitForTimeout(700);
+  const inputs = await page.$$('.pgrid input'); await inputs[0].fill('Aziz'); await inputs[1].fill('Malika');
   await page.waitForTimeout(400);
   await page.click('text=Start race'); await page.waitForTimeout(600);
   await page.addScriptTag({ path: path.join(__dirname, 'autopilot.js') });
@@ -20,7 +21,7 @@ const root = path.resolve(__dirname, '..');
   while (Date.now() - t0 < 240000) {
     const st = await page.evaluate(() => ({ phase: window.__mr.match?.phase }));
     if (st.phase === 'over') break;
-    if (!video && Date.now() - t0 > 6000 * (shots + 1) && shots < 3) await page.screenshot({ path: `/tmp/mr_shot${shots++}.png` });
+    if (!video && Date.now() - t0 > 5000 * (shots + 1) && shots < 6) await page.screenshot({ path: `/tmp/mr_shot${shots++}.png` });
     await page.waitForTimeout(500);
   }
   await page.waitForTimeout(2500);

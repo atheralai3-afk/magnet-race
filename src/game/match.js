@@ -4,7 +4,7 @@ import { rng } from '../util/rng.js';
 import { scoreAnswer, LAP_BONUS, rankPlayers } from './scoring.js';
 import { rollPowerup } from './powerups.js';
 
-export const FUEL_SECONDS = 3;
+export const PIT_SECONDS_PER_PIECE = 2;
 export const DUEL_GRACE = 15;
 
 // The match is event-sourced: every state change is an event. The client that "owns" a player
@@ -40,7 +40,7 @@ export class Match {
   applyEvent(ev) { if (ev.type === 'car') return this._remoteCar(ev); this.events.push(ev); this.log.push(ev); this._apply(ev); }
   get question() { for (const [id, q] of this.questions) if (this.owns(id)) return q; return null; }
   snapshot() {
-    return { phase: this.phase, mode: this.mode, laps: this.laps, time: this.time, turn: this.turn, question: this.question, questions: this.questions, currentId: this.current?.id ?? null, ranking: this.ranking,
+    return { pit: this.pit, phase: this.phase, mode: this.mode, laps: this.laps, time: this.time, turn: this.turn, question: this.question, questions: this.questions, currentId: this.current?.id ?? null, ranking: this.ranking,
       players: this.order.map(id => { const P = this.players.get(id), c = this.car(id); return { ...P, powerups: P.powerups.slice(), car: c, magnet: this.world.magnets.get(id) || null }; }) };
   }
   // ---------- flow
@@ -112,7 +112,7 @@ export class Match {
     // fuel & cards
     for (const z of T.zones) {
       if (!T.crossedForward(prevS, s, z.s)) continue;
-      if (z.type === 'fuel' && !P.fuelTaken.has(z.s) && this.mode === 'turns') this._emit({ type: 'fuel', playerId: P.id, zoneS: z.s, add: FUEL_SECONDS });
+      if (z.type === 'fuel' && !P.fuelTaken.has(z.s) && this.mode === 'turns') { this._emit({ type: 'pitstop', playerId: P.id, zoneS: z.s }); return; }
       if (z.type === 'card' && !P.cardsTaken.has(z.s)) {
         const view = this.deck.draw(z.difficulty, this.time);
         this._emit({ type: 'question', playerId: P.id, zoneS: z.s, view });
@@ -139,6 +139,12 @@ export class Match {
     this._emit({ type: 'turnEnd', playerId: P.id, reason, next: over ? null : next, nextIdx: idx });
     if (over) this._over();
   }
+  // Charge Pit Stop result: each paper piece lifted = +2 s
+  pitDone(pieces) {
+    if (this.phase !== 'pitstop' || !this.pit || !this.owns(this.pit.playerId)) return null;
+    const n = Math.max(0, Math.min(3, pieces | 0));
+    return this._emit({ type: 'fuel', playerId: this.pit.playerId, zoneS: this.pit.zoneS, add: n * PIT_SECONDS_PER_PIECE, pieces: n });
+  }
   playerLeft(id) { const P = this.player(id); if (!P || P.left) return; this._emit({ type: 'left', playerId: id }); if (this.mode === 'turns' && this.current?.id === id && this.phase !== 'over') this._endTurn('left'); else if (this.mode === 'duel' && [...this.players.values()].every(p => p.finished)) this._over(); }
   _over() { this._emit({ type: 'over', ranking: rankPlayers([...this.players.values()]).map(p => ({ id: p.id, score: p.score, lap: p.lap })) }); }
   _remoteCar(ev) { const c = this.car(ev.playerId); if (!c || this.owns(ev.playerId)) return; Object.assign(c, { x: ev.x, y: ev.y, vx: ev.vx, vy: ev.vy, heading: ev.heading, pullN: ev.pullN ?? 0, frictionN: ev.frictionN ?? 0 }); this.world.placeOnTrack(c); if (ev.magnet) this.world.setMagnet(ev.playerId, ev.magnet); }
@@ -149,7 +155,7 @@ export class Match {
     const P = ev.playerId ? this.players.get(ev.playerId) : null, car = P ? this.car(P.id) : null;
     switch (ev.type) {
       case 'start': this.phase = this.mode === 'turns' ? 'roll' : 'turn'; this.turnIdx = 0; break;
-      case 'dice': P.doubleDice = false; this.turn = { playerId: P.id, a: ev.a, b: ev.b, seconds: ev.seconds, timeTotal: ev.seconds, timeLeft: ev.seconds, started: false, skipSand: false }; this.phase = 'turn'; this.world.mods.set(P.id, {}); break;
+      case 'dice': P.doubleDice = false; this.turn = { playerId: P.id, a: ev.a, b: ev.b, doubled: !!ev.doubled, seconds: ev.seconds, timeTotal: ev.seconds, timeLeft: ev.seconds, started: false, skipSand: false }; this.phase = 'turn'; this.world.mods.set(P.id, {}); break;
       case 'turnGo': if (this.turn) this.turn.started = true; break;
       case 'checkpoint': {
         const n = this.track.checkpoints.length; P.lastCp = ev.index; P.cp = (ev.index + 1) % n; if (ev.index === n - 1) P.lapArmed = true;
@@ -162,7 +168,8 @@ export class Match {
           if (this.mode === 'turns') this.finalRound = true;
           if (this.mode === 'duel' && this.graceLeft == null && ![...this.players.values()].every(p => p.finished)) this.graceLeft = DUEL_GRACE; }
         break; }
-      case 'fuel': P.fuelTaken.add(ev.zoneS); if (this.turn && this.turn.playerId === P.id) { this.turn.timeLeft += ev.add; this.turn.timeTotal += ev.add; } break;
+      case 'pitstop': P.fuelTaken.add(ev.zoneS); this.pit = { playerId: P.id, zoneS: ev.zoneS }; this.phase = 'pitstop'; if (car) car.vx = car.vy = 0; this.world.setMagnet(P.id, { x: 0, y: 0, active: false }); break;
+      case 'fuel': P.fuelTaken.add(ev.zoneS); if (this.turn && this.turn.playerId === P.id) { this.turn.timeLeft += ev.add; this.turn.timeTotal += ev.add; } if (this.phase === 'pitstop') { this.phase = 'turn'; this.pit = null; P.needRelease = true; } break;
       case 'question': P.cardsTaken.add(ev.zoneS); this.questions.set(P.id, { playerId: P.id, view: ev.view, askedAt: ev.t }); if (this.mode === 'turns') this.phase = 'question'; else if (car) { car.vx = car.vy = 0; } break;
       case 'answer': {
         this.questions.delete(P.id);
@@ -182,7 +189,7 @@ export class Match {
         break; }
       case 'skipped': P.skipNext = false; break;
       case 'turnEnd': { P.needRelease = false; if (car) { car.vx = car.vy = 0; car.stuck = false; } this.world.setMagnet(P.id, { x: 0, y: 0, active: false }); this.world.mods.set(P.id, {});
-        this.turn = null; this.questions.delete(P.id); if (ev.next != null) { this.turnIdx = ev.nextIdx; this.phase = 'roll'; } break; }
+        this.turn = null; this.pit = null; this.questions.delete(P.id); if (ev.next != null) { this.turnIdx = ev.nextIdx; this.phase = 'roll'; } break; }
       case 'left': P.finished = true; P.left = true; if (car) { car.vx = car.vy = 0; } break;
       case 'over': this.phase = 'over'; this.ranking = ev.ranking; break;
     }

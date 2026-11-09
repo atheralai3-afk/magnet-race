@@ -1,33 +1,33 @@
-// Injected into the page by the browser tests: drives the magnet like a careful player
-// and answers cards, so the full game loop can be exercised and recorded.
-window.__autopilot = function ({ wrongEvery = 0, answerDelay = 1400, rollDelay = 900, cursor = true } = {}) {
+// Injected by the browser tests: plays like a careful player so the whole game loop can be
+// exercised and recorded. Drives the magnet, rolls, answers cards and plays the pit stop.
+window.__autopilot = function ({ wrongEvery = 0, answerDelay = 1300, rollDelay = 900, cursor = true } = {}) {
+  window.__autoplay = true; // pit stops play themselves
   const mr = window.__mr, app = mr.app, T = mr.track, R = mr.renderer;
   let answered = 0, pending = null, rollAt = 0, cur = null;
-  if (cursor) { cur = document.createElement('div'); cur.style.cssText = 'position:fixed;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 0 3px rgba(0,0,0,.25),0 4px 10px rgba(0,0,0,.3);pointer-events:none;z-index:99;transition:transform .12s'; document.body.append(cur); }
+  if (cursor) { cur = document.createElement('div'); cur.style.cssText = 'position:fixed;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;background:rgba(255,255,255,.9);box-shadow:0 0 0 3px rgba(0,0,0,.25),0 4px 10px rgba(0,0,0,.3);pointer-events:none;z-index:999;transition:left .12s,top .12s'; document.body.append(cur); }
+  const at = (x, y) => { if (cur) { cur.style.left = x + 'px'; cur.style.top = y + 'px'; } };
+  const lead = (c) => { const sand = T.surfaceAt(c.s) === 'sand' || T.surfaceAt(c.s + 0.02) === 'sand'; const L = (0.037 + Math.min(0.02, c.speed * 0.06)) * (sand ? 0.72 : 1); const p = T.pointAt(c.s + L); let ox = 0, oy = 0; for (const pl of T.plates()) if (T.forward(c.s, pl.s) < 0.08 || T.forward(pl.s, c.s) < 0.03) { ox = -pl.side * p.nx * 0.018; oy = -pl.side * p.ny * 0.018; } return { x: p.x + ox, y: p.y + oy }; };
   function step(now) {
-    const m = mr.match; if (!m) return requestAnimationFrame(step);
-    const sheet = document.querySelector('.sheet');
+    const m = mr.match;
+    if (!m) return requestAnimationFrame(step);
     if (m.phase === 'over') { if (cur) cur.style.display = 'none'; return; }
-    if (m.question && sheet && !pending) {
+    const qs = document.querySelector('.dim:not(.out) .opts, .dim:not(.out) .numrow');
+    if (m.question && qs && !pending && app.q && app.q.drawId === m.question.view.drawId && !app.q._auto) {
+      app.q._auto = true;
       const v = m.question.view, live = m.deck.live.get(v.drawId); answered++;
       const wrong = wrongEvery && answered % wrongEvery === 0;
       pending = setTimeout(() => {
         pending = null;
-        if (v.type === 'num') { const inp = sheet.querySelector('input'); inp.value = wrong ? '7' : String(live.q.answer); sheet.querySelector('.btn').click(); }
-        else { const opts = sheet.querySelectorAll('.opt'); const i = wrong ? (live.correctIndex + 1) % opts.length : live.correctIndex; const b = opts[i]; if (cur) { const r = b.getBoundingClientRect(); cur.style.left = r.left + 40 + 'px'; cur.style.top = r.top + r.height / 2 + 'px'; } setTimeout(() => b.click(), 350); }
+        if (v.type === 'num') { const inp = qs.querySelector('input'); inp.value = wrong ? '7' : String(live.q.answer); const b = qs.querySelector('.btn'); const r = b.getBoundingClientRect(); at(r.left + r.width / 2, r.top + r.height / 2); setTimeout(() => b.click(), 300); }
+        else { const opts = qs.querySelectorAll('.opt'); const i = wrong ? (live.correctIndex + 1) % opts.length : live.correctIndex; const b = opts[i]; const r = b.getBoundingClientRect(); at(r.left + 60, r.top + r.height / 2); setTimeout(() => b.click(), 350); }
       }, answerDelay);
     }
     const rollBtn = [...document.querySelectorAll('.center .btn')].find(b => b.textContent.includes('Roll'));
-    if (m.phase === 'roll' && rollBtn) { if (!rollAt) rollAt = now + rollDelay; if (now > rollAt) { rollAt = 0; rollBtn.click(); } if (cur) { const r = rollBtn.getBoundingClientRect(); cur.style.left = r.left + r.width / 2 + 'px'; cur.style.top = r.top + r.height / 2 + 'px'; } }
-    if (m.phase === 'turn' && !m.question && !document.querySelector('.dim')) {
-      const c = m.car(m.current.id); const lead = 0.037 + Math.min(0.02, c.speed * 0.06);
-      const p = T.pointAt(c.s + lead); let ox = 0, oy = 0;
-      for (const pl of T.plates()) { if (T.forward(c.s, pl.s) < 0.08 || T.forward(pl.s, c.s) < 0.03) { ox = -pl.side * p.nx * 0.018; oy = -pl.side * p.ny * 0.018; } }
-      const sand = T.surfaceAt(c.s) === 'sand' || T.surfaceAt(c.s + 0.02) === 'sand';
-      const k = sand ? 0.72 : 1; // bring the magnet closer over sandpaper
-      const q = T.pointAt(c.s + lead * k);
-      app.magnet = { x: (sand ? q.x : p.x) + ox, y: (sand ? q.y : p.y) + oy, active: true };
-      if (cur) { cur.style.left = R.X(app.magnet.x) + 'px'; cur.style.top = R.Y(app.magnet.y) + 'px'; }
+    if (m.phase === 'roll' && rollBtn) { const r = rollBtn.getBoundingClientRect(); at(r.left + r.width / 2, r.top + r.height / 2); if (!rollAt) rollAt = now + rollDelay; if (now > rollAt) { rollAt = 0; rollBtn.click(); } }
+    const busy = app.q || app.pit || document.querySelector('.dim:not(.out)');
+    if (m.phase === 'turn' && !busy && m.current && app.inputIds.has(m.current.id)) {
+      const c = m.car(m.current.id), p = lead(c);
+      app.magnet = { x: p.x, y: p.y, active: true }; at(R.X(p.x), R.Y(p.y));
     } else if (m.phase !== 'turn') app.magnet = { ...app.magnet, active: false };
     requestAnimationFrame(step);
   }
