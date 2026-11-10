@@ -52,7 +52,15 @@ export class SupabaseTransport {
     const flat = () => Object.entries(ch.presenceState()).map(([key, metas]) => ({ key, ...(metas[metas.length - 1] || {}) }));
     ch.on('broadcast', { event: '*' }, ({ event, payload }) => em.emit(event, payload?.p, { from: payload?.from }));
     ch.on('presence', { event: 'sync' }, () => presenceHandlers.forEach(f => f(flat())));
-    await new Promise((res, rej) => ch.subscribe(status => { if (status === 'SUBSCRIBED') res(); else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') rej(new Error(status)); }));
+    await new Promise((res, rej) => {
+      let settled = false;
+      const done = (fn, v) => { if (!settled) { settled = true; clearTimeout(t); fn(v); } };
+      const t = setTimeout(() => { this.client.removeChannel(ch); done(rej, new Error('TIMED_OUT')); }, 12000);
+      ch.subscribe(status => {
+        if (status === 'SUBSCRIBED') done(res);
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') done(rej, new Error(status));
+      });
+    });
     const key = this.clientId;
     return {
       name, key,
@@ -67,10 +75,18 @@ export class SupabaseTransport {
 }
 
 // Builds a transport from config: Supabase when configured, otherwise local.
+// One Supabase client (one websocket) per page, shared by the lobby, matchmaking and the game.
+let sharedClient = null;
 export async function makeTransport(config, clientId) {
   if (config?.supabaseUrl && config?.supabaseAnonKey) {
-    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-    return new SupabaseTransport(createClient(config.supabaseUrl, config.supabaseAnonKey), clientId);
+    if (!sharedClient) {
+      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+      sharedClient = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        realtime: { params: { eventsPerSecond: 40 } },
+      });
+    }
+    return new SupabaseTransport(sharedClient, clientId);
   }
   return new LocalTransport(clientId);
 }

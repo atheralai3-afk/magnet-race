@@ -107,7 +107,7 @@ function autoplay(m, ids, { lead = 0.035, wrong = () => false } = {}) {
   rA.setSettings({ laps: 1 }); await tick(); ok(rB.settings.laps === 1, 'settings sync');
   const s = rA.start(); await tick();
   const sA = new NetSession(tA, { code: rA.code, start: s, track }), sB = new NetSession(tB, { code: rA.code, start: rB.started, track });
-  const mA = await sA.open(), mB = await sB.open(); await tick();
+  const [mA, mB] = await Promise.all([sA.open(), sB.open()]); await tick();
   for (let f = 0; f < 60 * 600 && mA.phase !== 'over'; f++) {
     for (const [ss, m, id] of [[sA, mA, 'A'], [sB, mB, 'B']]) {
       if (m.phase === 'roll' && m.current.id === id) ss.roll();
@@ -127,6 +127,27 @@ function autoplay(m, ids, { lead = 0.035, wrong = () => false } = {}) {
   const t1 = new LocalTransport('P1'), t2 = new LocalTransport('P2');
   const [a, b] = await Promise.all([new Matchmaker(t1, { name: 'One' }).find({ timeout: 2000 }), new Matchmaker(t2, { name: 'Two' }).find({ timeout: 2000 })]);
   ok(a.code === b.code && a.isHost !== b.isHost && a.mode === 'duel', 'public duel matchmaking pairs two players');
+  // the opponent never reaches the game channel -> a clear error instead of a frozen race
+  const lone = new NetSession(t1, { code: 'GHOST', start: { ...a, players: a.players }, track, waitMs: 200 });
+  let err = null; try { await lone.open(); } catch (e) { err = e.message; }
+  ok(err === 'opponent', 'duel reports an opponent who never connects');
+  // a duel where one player is slower to connect still starts in sync
+  const t3 = new LocalTransport('Q1'), t4 = new LocalTransport('Q2');
+  const st = { code: 'D2', seed: 9, mode: 'duel', host: 'Q1', settings: { laps: 1 }, players: [{ id: 'Q1', name: 'X' }, { id: 'Q2', name: 'Y' }] };
+  const d1 = new NetSession(t3, { code: 'D2', start: st, track }), d2 = new NetSession(t4, { code: 'D2', start: st, track });
+  const p1 = d1.open(); await new Promise(r => setTimeout(r, 120)); const p2 = d2.open();
+  const [m1, m2] = await Promise.all([p1, p2]);
+  for (let f = 0; f < 60 * 300 && !(m1.phase === 'over' && m2.phase === 'over'); f++) {
+    for (const [ss, m, id] of [[d1, m1, 'Q1'], [d2, m2, 'Q2']]) {
+      if (m.phase === 'pitstop' && m.pit?.playerId === id) ss.pitDone(1);
+      if (m.question) { const v = m.question.view, l = m.deck.live.get(v.drawId); ss.answer(v.type === 'num' ? l.q.answer : l.correctIndex); }
+      ss.setMagnet(autoMagnet(track, m.car(id)));
+      ss.update(1 / 60);
+    }
+    await tick();
+  }
+  ok(m1.phase === 'over' && m2.phase === 'over', 'duel with a late joiner finishes on both clients');
+  ok(m1.snapshot().players.map(p => p.lap).join() === m2.snapshot().players.map(p => p.lap).join(), 'duel clients agree on laps');
 }
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

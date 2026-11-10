@@ -7,7 +7,7 @@ A physics racing game: pull a steel car around the track with a magnet (your fin
 ## Play
 - **Solo**: time trial, 3 laps.
 - **Pass & Play**: 2–4 players on one device, taking turns.
-- **Private room / Public duel**: online play (needs Supabase, see below).
+- **Private room / Public duel**: online play over Supabase Realtime (switched on).
 
 Press on the track to put the magnet down, move it to pull the car, and lift it to drop the magnet.
 - The car only moves when the magnet's pull is bigger than friction (0.10 N on smooth track, 0.30 N on sandpaper).

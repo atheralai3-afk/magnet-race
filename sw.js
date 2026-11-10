@@ -1,5 +1,5 @@
 // Offline support: serves the game from cache, refreshing it in the background.
-const VERSION = 'mr-v5';
+const VERSION = 'mr-v6';
 const SHELL = [
  "./",
  "favicon.ico",

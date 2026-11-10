@@ -112,8 +112,11 @@ async function openRoom({ name, code, isHost }) {
   try {
     const transport = await makeTransport(config, clientId);
     room = await new Room(transport, { name, code, isHost }).open();
-    await new Promise(r => setTimeout(r, 300));
+    // joining with a code: give the server a moment to tell us who is already in the room
+    if (!isHost) for (let t = 0; t < 30 && room.players.length < 2; t++) await new Promise(r => setTimeout(r, 100));
+    else await new Promise(r => setTimeout(r, 300));
     if (room.full) { room.leave(); menuToast('That room is full (4 players).'); return; }
+    if (!isHost && room.players.length < 2) { room.leave(); menuToast('Room ' + room.code + ' was not found. Check the code with your friend.', 3600); return; }
     lobby = lobbySheet(room, {
       onStart: () => room.start(),
       onLeave: () => { room.leave(); },
@@ -146,7 +149,14 @@ async function findDuel(name) {
 async function startNet(transport, code, start) {
   stopGame();
   app.session = new NetSession(transport, { code, start, track });
-  app.match = await app.session.open();
+  try {
+    app.match = await app.session.open({ onWaiting: names => menuToast('Waiting for ' + names.join(', ') + '…', 4000) });
+  } catch (e) {
+    console.error(e); app.session = null; app.match = null;
+    home();
+    menuToast(e.message === 'opponent' ? 'Your opponent could not connect. Try Public Duel again.' : e.message === 'nobody' ? 'Nobody else joined the game.' : 'Could not connect to the game server.', 3600);
+    return;
+  }
   app.inputIds = new Set([clientId]); app.local = false;
   beginRace();
 }

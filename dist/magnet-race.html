@@ -412,13 +412,12 @@ input[type=range]::-moz-range-thumb { width: 28px; height: 28px; border: 0; bord
 // ---- src/config.js
 const __m0 = (() => {
 
-// Online play (private rooms + public duels) needs a free Supabase project:
-//   1. supabase.com -> New project -> Settings -> API
-//   2. paste the Project URL and the anon public key below
-// Leave both empty and the game runs fully offline (Solo + Pass & Play).
+// Online play (Private Room + Public Duel) runs on Supabase Realtime.
+// These are the project's PUBLIC browser keys — safe to ship in a website. No database tables are used.
+// Leave both empty to run fully offline (pass-and-play only).
 const config = {
-  supabaseUrl: '',
-  supabaseAnonKey: '',
+  supabaseUrl: 'https://ccppaxiumfggdjejfzyp.supabase.co',
+  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNjcHBheGl1bWZnZ2RqZWpmenlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQyNjUyMzgsImV4cCI6MjEwOTg0MTIzOH0.KCuh2mvkt5taoMLQWONgYJ9h4IGtweTA3542nu2rwR4',
 };
 
 return { config };
@@ -1446,7 +1445,15 @@ class SupabaseTransport {
     const flat = () => Object.entries(ch.presenceState()).map(([key, metas]) => ({ key, ...(metas[metas.length - 1] || {}) }));
     ch.on('broadcast', { event: '*' }, ({ event, payload }) => em.emit(event, payload?.p, { from: payload?.from }));
     ch.on('presence', { event: 'sync' }, () => presenceHandlers.forEach(f => f(flat())));
-    await new Promise((res, rej) => ch.subscribe(status => { if (status === 'SUBSCRIBED') res(); else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') rej(new Error(status)); }));
+    await new Promise((res, rej) => {
+      let settled = false;
+      const done = (fn, v) => { if (!settled) { settled = true; clearTimeout(t); fn(v); } };
+      const t = setTimeout(() => { this.client.removeChannel(ch); done(rej, new Error('TIMED_OUT')); }, 12000);
+      ch.subscribe(status => {
+        if (status === 'SUBSCRIBED') done(res);
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') done(rej, new Error(status));
+      });
+    });
     const key = this.clientId;
     return {
       name, key,
@@ -1461,10 +1468,18 @@ class SupabaseTransport {
 }
 
 // Builds a transport from config: Supabase when configured, otherwise local.
+// One Supabase client (one websocket) per page, shared by the lobby, matchmaking and the game.
+let sharedClient = null;
 async function makeTransport(config, clientId) {
   if (config?.supabaseUrl && config?.supabaseAnonKey) {
-    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-    return new SupabaseTransport(createClient(config.supabaseUrl, config.supabaseAnonKey), clientId);
+    if (!sharedClient) {
+      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+      sharedClient = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        realtime: { params: { eventsPerSecond: 40 } },
+      });
+    }
+    return new SupabaseTransport(sharedClient, clientId);
   }
   return new LocalTransport(clientId);
 }
@@ -1540,7 +1555,8 @@ class Matchmaker {
         onStatus?.(list.length);
         const sorted = list.slice().sort((a, b) => a.joinedAt - b.joinedAt || (a.key < b.key ? -1 : 1));
         const i = sorted.findIndex(p => p.key === this.me);
-        if (i < 0 || i % 2 !== 0 || !sorted[i + 1]) return; // I am a host only if I am first of a complete pair
+        if (done || this.sent || i < 0 || i % 2 !== 0 || !sorted[i + 1]) return; // I am a host only if I am first of a complete pair
+        this.sent = true;
         const guest = sorted[i + 1];
         const m = { code: 'DUEL-' + Math.random().toString(36).slice(2, 8).toUpperCase(), seed: randomSeed(), host: this.me, guest: guest.key,
           players: [{ id: this.me, name: this.name, color: PLAYER_COLORS[0] }, { id: guest.key, name: guest.name, color: PLAYER_COLORS[1] }], mode: 'duel', settings: { laps: 3 } };
@@ -1560,25 +1576,33 @@ return { Matchmaker };
 const __m17 = (() => {
 const { Match } = __m10;
 
-const CAR_HZ = 20;
+const CAR_HZ = 15;        // car updates per second while the car is moving
+const IDLE_HZ = 2;        // heartbeat while the car is still
+const WAIT_MS = 15000;    // how long to wait for everyone to arrive in the game channel
+const EXTRAPOLATE = 0.25; // seconds a remote car keeps coasting on its last velocity
 
 // Runs one Match over a channel. Each client owns its own player: it simulates that car,
 // emits that player's events, and mirrors everyone else's events.
 class NetSession {
-  constructor(transport, { code, start, track, onEnd }) {
-    this.transport = transport; this.code = code; this.start = start; this.track = track; this.me = transport.clientId; this.onEnd = onEnd;
+  constructor(transport, { code, start, track, onEnd, waitMs = WAIT_MS }) {
+    this.transport = transport; this.code = code; this.start = start; this.track = track; this.me = transport.clientId; this.onEnd = onEnd; this.waitMs = waitMs;
     this.isHost = start.players[0]?.id === this.me || start.host === this.me;
+    this.inbox = []; this.lastCar = new Map(); this.seen = new Set();
   }
-  async open() {
+  async open({ onWaiting } = {}) {
     const { seed, players, settings, mode } = this.start;
     this.match = new Match({ mode: mode || 'turns', players, track: this.track, laps: settings?.laps ?? 3, seed, localIds: [this.me] });
     this.ch = await this.transport.join('game:' + this.code);
-    this.ch.on('ev', ev => this.match.applyEvent(ev));
-    this.ch.on('car', ev => this.match.applyEvent(ev));
-    this.seen = new Set();
+    // messages that arrive before our own match has started are queued, then applied in order
+    const receive = ev => { if (this.ready) this._apply(ev); else this.inbox.push(ev); };
+    this.ch.on('ev', receive);
+    this.ch.on('car', receive);
+    let arrived = null;
+    const allHere = new Promise(r => { arrived = r; });
     this.ch.onPresence(list => {
       const here = new Set(list.map(p => p.key));
       for (const k of here) this.seen.add(k);
+      if (players.every(p => this.seen.has(p.id))) arrived();
       if (!this.ready) return;
       // a player counts as gone only after we have actually seen them in the game channel
       for (const id of this.match.order) if (!here.has(id) && this.seen.has(id) && id !== this.me && this.match.player(id) && !this.match.player(id).left) {
@@ -1586,16 +1610,40 @@ class NetSession {
       }
     });
     await this.ch.track({ name: players.find(p => p.id === this.me)?.name, joinedAt: Date.now() });
+    // wait (briefly) until everybody has joined, so nobody misses the first dice roll
+    if (players.length > 1 && !players.every(p => this.seen.has(p.id))) {
+      onWaiting?.(players.filter(p => !this.seen.has(p.id)).map(p => p.name));
+      await Promise.race([allHere, new Promise(r => setTimeout(r, this.waitMs))]);
+    }
+    const missing = players.filter(p => p.id !== this.me && !this.seen.has(p.id));
+    if (players.length > 1 && missing.length === players.length - 1) { this.close(); throw new Error(mode === 'duel' ? 'opponent' : 'nobody'); }
     this.match.start(); this.match.drain(); // 'start' is applied locally by everyone from the same payload
-    this.ready = true; this.carAcc = 0;
+    this.ready = true; this.carAcc = 0; this.idleAcc = 0;
+    for (const ev of this.inbox.splice(0)) this._apply(ev);
+    if (this.isHost || this.match.mode === 'duel') for (const p of missing) this.match.playerLeft(p.id);
     return this.match;
+  }
+  _apply(ev) {
+    if (ev.type === 'car') this.lastCar.set(ev.playerId, performance.now());
+    this.match.applyEvent(ev);
   }
   // call every frame; returns the events for the UI
   update(dt) {
     const m = this.match, evs = m.update(dt);
     for (const ev of evs) if (ev.origin === 'local' && ev.type !== 'start') { const { origin, ...wire } = ev; this.ch.send('ev', wire); }
+    // remote cars: coast on their last known velocity between updates so they move smoothly
+    const now = performance.now();
+    for (const [id, t] of this.lastCar) {
+      if (id === this.me || (now - t) / 1000 > EXTRAPOLATE) continue;
+      const c = m.car(id); if (!c) continue;
+      c.x += c.vx * dt; c.y += c.vy * dt; m.world.placeOnTrack(c);
+    }
     const active = m.mode === 'duel' || (m.turn && m.turn.playerId === this.me);
-    if (active && m.phase !== 'over') { this.carAcc += dt; if (this.carAcc >= 1 / CAR_HZ) { this.carAcc = 0; this.ch.send('car', m.carMessage(this.me)); } }
+    if (active && m.phase !== 'over') {
+      const c = m.car(this.me), moving = c && (Math.abs(c.vx) + Math.abs(c.vy) > 1e-4 || m.world.magnets.get(this.me)?.active);
+      this.carAcc += dt;
+      if (this.carAcc >= 1 / (moving ? CAR_HZ : IDLE_HZ)) { this.carAcc = 0; this.ch.send('car', m.carMessage(this.me)); }
+    }
     return evs;
   }
   roll() { return this.match.roll(); } // the dice event is broadcast by the next update()
@@ -2652,8 +2700,11 @@ async function openRoom({ name, code, isHost }) {
   try {
     const transport = await makeTransport(config, clientId);
     room = await new Room(transport, { name, code, isHost }).open();
-    await new Promise(r => setTimeout(r, 300));
+    // joining with a code: give the server a moment to tell us who is already in the room
+    if (!isHost) for (let t = 0; t < 30 && room.players.length < 2; t++) await new Promise(r => setTimeout(r, 100));
+    else await new Promise(r => setTimeout(r, 300));
     if (room.full) { room.leave(); menuToast('That room is full (4 players).'); return; }
+    if (!isHost && room.players.length < 2) { room.leave(); menuToast('Room ' + room.code + ' was not found. Check the code with your friend.', 3600); return; }
     lobby = lobbySheet(room, {
       onStart: () => room.start(),
       onLeave: () => { room.leave(); },
@@ -2686,7 +2737,14 @@ async function findDuel(name) {
 async function startNet(transport, code, start) {
   stopGame();
   app.session = new NetSession(transport, { code, start, track });
-  app.match = await app.session.open();
+  try {
+    app.match = await app.session.open({ onWaiting: names => menuToast('Waiting for ' + names.join(', ') + '…', 4000) });
+  } catch (e) {
+    console.error(e); app.session = null; app.match = null;
+    home();
+    menuToast(e.message === 'opponent' ? 'Your opponent could not connect. Try Public Duel again.' : e.message === 'nobody' ? 'Nobody else joined the game.' : 'Could not connect to the game server.', 3600);
+    return;
+  }
   app.inputIds = new Set([clientId]); app.local = false;
   beginRace();
 }

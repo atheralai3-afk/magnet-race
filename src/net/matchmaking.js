@@ -16,7 +16,8 @@ export class Matchmaker {
         onStatus?.(list.length);
         const sorted = list.slice().sort((a, b) => a.joinedAt - b.joinedAt || (a.key < b.key ? -1 : 1));
         const i = sorted.findIndex(p => p.key === this.me);
-        if (i < 0 || i % 2 !== 0 || !sorted[i + 1]) return; // I am a host only if I am first of a complete pair
+        if (done || this.sent || i < 0 || i % 2 !== 0 || !sorted[i + 1]) return; // I am a host only if I am first of a complete pair
+        this.sent = true;
         const guest = sorted[i + 1];
         const m = { code: 'DUEL-' + Math.random().toString(36).slice(2, 8).toUpperCase(), seed: randomSeed(), host: this.me, guest: guest.key,
           players: [{ id: this.me, name: this.name, color: PLAYER_COLORS[0] }, { id: guest.key, name: guest.name, color: PLAYER_COLORS[1] }], mode: 'duel', settings: { laps: 3 } };
