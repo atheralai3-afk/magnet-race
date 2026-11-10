@@ -7,6 +7,7 @@ A physics racing game: pull a steel car around the track with a magnet (your fin
 ## Play
 - **Solo**: time trial, 3 laps.
 - **Pass & Play**: 2–4 players on one device, taking turns.
+- **vs Bots**: race 1–3 computer players (Easy / Normal / Hard) that roll, steer, do pit stops and answer cards.
 - **Private room / Public duel**: online play over Supabase Realtime (switched on).
 
 Press on the track to put the magnet down, move it to pull the car, and lift it to drop the magnet.

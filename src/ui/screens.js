@@ -11,7 +11,7 @@ const raw = (html) => { const t = document.createElement('template'); t.innerHTM
 const ic = (name, size) => raw(icon(name, size));
 const tileArt = (topic, level, size) => h('div.tile', raw(art(topic, level, size)));
 const initial = (n) => (n || '?').trim()[0]?.toUpperCase() || '?';
-const avatar = (name, color, cls = '') => h('div.avatar' + cls, { style: { background: `linear-gradient(135deg, ${color}, ${shade(color)})` } }, initial(name));
+const avatar = (name, color, cls = '') => h('div.avatar' + cls + (/^Bot /.test(name || '') ? '.isbot' : ''), { style: { background: `linear-gradient(135deg, ${color}, ${shade(color)})` } }, /^Bot /.test(name || '') ? ic('bot', 22) : initial(name));
 function shade(hex) { const n = parseInt(hex.slice(1), 16), f = .72; return `rgb(${(n >> 16 & 255) * f | 0},${(n >> 8 & 255) * f | 0},${(n & 255) * f | 0})`; }
 const btn = (cls, iconName, t1, t2, props = {}) => h('button.btn' + cls, props, iconName ? h('div.ic', ic(iconName, 28)) : null, h('div.txt', h('div.t1', t1), t2 ? h('div.t2', t2) : null), cls.includes('.sm') ? null : h('div.chev', ic('chev')));
 
@@ -37,7 +37,7 @@ export function openSheet(content, { onClose, dismissible = true, menu = true, c
 }
 
 // ------------------------------------------------------------------ home
-export function homeScreen({ online, prof, challenge, onSolo, onPass, onCreateRoom, onJoin, onDuel, onEditName }) {
+export function homeScreen({ online, prof, challenge, onSolo, onBots, onPass, onCreateRoom, onJoin, onDuel, onEditName }) {
   let code = '';
   const join = h('button.btn.sm.clear', { disabled: true, onclick: () => onJoin(code) }, h('div.txt', h('div.t1', 'Join')));
   const codeField = h('input.field.code', { placeholder: 'Room code', disabled: !online, maxLength: 8, 'aria-label': 'Room code',
@@ -58,9 +58,10 @@ export function homeScreen({ online, prof, challenge, onSolo, onPass, onCreateRo
           btn('.green', 'duel', 'Public Duel', online ? 'Get matched with a random player · 1v1' : 'Online play is off · see the note', { onclick: onDuel, disabled: !online }),
           btn('.blue', 'lock', 'Create Private Room', 'Invite up to 3 friends with a code', { onclick: onCreateRoom, disabled: !online }),
           h('div.row', { style: { gap: '12px' } }, codeField, join),
-          h('div.row', { style: { gap: '12px' } },
-            h('button.btn.clear', { onclick: onSolo, style: { flex: 1 } }, h('div.ic.s', ic('flag', 22)), h('div.txt', h('div.t1', { style: { fontSize: '18px' } }, 'Solo'), h('div.t2', 'Practice race'))),
-            h('button.btn.clear', { onclick: onPass, style: { flex: 1 } }, h('div.ic.s', ic('users', 22)), h('div.txt', h('div.t1', { style: { fontSize: '18px' } }, 'Pass & Play'), h('div.t2', '2–4 on one device')))),
+          h('div.row.trio', { style: { gap: '12px' } },
+            h('button.btn.clear', { onclick: onSolo }, h('div.ic.s', ic('flag', 22)), h('div.txt', h('div.t1', 'Solo'), h('div.t2', 'Practice race'))),
+            h('button.btn.clear', { onclick: onBots }, h('div.ic.s.bot', ic('bot', 22)), h('div.txt', h('div.t1', 'vs Bots'), h('div.t2', 'Race the computer'))),
+            h('button.btn.clear', { onclick: onPass }, h('div.ic.s', ic('users', 22)), h('div.txt', h('div.t1', 'Pass & Play'), h('div.t2', '2–4 on one device')))),
         )),
       h('div.side',
         h('div.glass.panel.tilt',
@@ -97,6 +98,26 @@ export function passSetupSheet({ names = [], onStart, onClose }) {
   const d = openSheet([h('h2', 'Pass & Play'), h('div.lead', 'Take turns on one device. Hand it over when your turn ends.'),
     h('div.row', { style: { marginTop: '22px', gap: '14px' } }, h('b', 'Players'), seg), grid,
     h('div.foot', h('span.sub', { style: { fontSize: '14px' } }, '3 laps · most points wins'), btn('.green.sm', 'flag', 'Start race', null, { onclick: () => { d.close(true); onStart(Array.from({ length: count }, (_, i) => ({ id: 'p' + (i + 1), name: (vals[i] || '').trim() || `Player ${i + 1}`, color: PLAYER_COLORS[i] }))); } }))], { onClose });
+  return d;
+}
+
+export function botSetupSheet({ count = 1, level = 'normal', onStart, onClose }) {
+  const LEVELS = [['easy', 'Easy', 'Gets about half the cards right'], ['normal', 'Normal', 'A solid IGCSE student'], ['hard', 'Hard', 'Knows almost every answer']];
+  const seg = (vals, cur, label, pick) => { const el = h('div.seg', vals.map(v => h('button', { className: v === cur ? 'on' : '', onclick: () => { pick(v); [...el.children].forEach((b, i) => b.classList.toggle('on', vals[i] === v)); render(); } }, label(v)))); return el; };
+  const crew = h('div.pgrid'), hint = h('div.sub', { style: { fontSize: '14px', marginTop: '10px' } });
+  const render = () => {
+    clear(crew);
+    crew.append(h('div.pin', avatar('You', PLAYER_COLORS[0]), h('div.nm', 'You')));
+    for (let i = 0; i < count; i++) crew.append(h('div.pin', { style: { animationDelay: (i + 1) * 50 + 'ms' } }, h('div.botav', { style: { background: PLAYER_COLORS[i + 1] } }, ic('bot', 26)), h('div.nm', 'Bot ' + (i + 1))));
+    hint.textContent = LEVELS.find(l => l[0] === level)[2] + '. Bots drive with the same magnet physics as you.';
+  };
+  const segN = seg([1, 2, 3], count, String, v => count = v);
+  const segL = seg(LEVELS.map(l => l[0]), level, v => LEVELS.find(l => l[0] === v)[1], v => level = v);
+  render();
+  const d = openSheet([h('h2', 'Race vs Bots'), h('div.lead', 'Take turns with computer players. They roll, steer, do the pit stop and answer cards.'),
+    h('div.row', { style: { marginTop: '22px', gap: '14px' } }, h('b', 'Bots'), segN),
+    h('div.row', { style: { marginTop: '14px', gap: '14px' } }, h('b', 'Level'), segL), hint, crew,
+    h('div.foot', h('span.sub', { style: { fontSize: '14px' } }, '3 laps · bot turns play at 2× speed'), btn('.green.sm', 'flag', 'Start race', null, { onclick: () => { d.close(true); onStart(count, level); } }))], { onClose });
   return d;
 }
 
@@ -253,8 +274,9 @@ export class Hud {
     Object.assign(this.phys.style, { left: x + 'px', top: y + 'px', maxWidth: w + 'px' });
     this.phys.classList.toggle('tiny', hgt < 150);
   }
-  update(snap, inputId, track) {
-    const P = snap.players.find(p => p.id === inputId) || snap.players[0];
+  // inputId: the player the HUD follows; me: who is holding this device (when one person is), for lap/streak and "YOUR TURN"
+  update(snap, inputId, track, { me = null, mine = null } = {}) {
+    const P = snap.players.find(p => p.id === (me || inputId)) || snap.players[0];
     this._once('lap', `${P.lap}:${snap.laps}:${P.streak}`, () => {
       this.lap.replaceChildren(h('div.k', 'LAP'), h('div.v', String(Math.min(P.lap + 1, snap.laps)), h('small', ` / ${snap.laps}`)));
       this.streakEl.replaceChildren(P.streak >= 3 ? h('div.glass.pill.streak', ic('flame', 18), `Streak ×${P.streak >= 5 ? 2 : 1.5}`) : '');
@@ -273,10 +295,10 @@ export class Hud {
     if (snap.mode === 'turns') {
       const left = t ? Math.max(0, t.timeLeft) : 0, frac = t ? Math.min(1, left / t.timeTotal) : 0, R = 33, C = 2 * Math.PI * R;
       const col = frac > .5 ? '#34C759' : frac > .25 ? '#FF9F0A' : '#FF3B30';
-      this._once('timer', `${t ? Math.ceil(left * 4) : -1}:${t?.started}:${t?.a}:${t?.timeTotal}`, () => {
+      this._once('timer', `${t ? Math.ceil(left * 4) : -1}:${t?.playerId}:${t?.started}:${t?.a}:${t?.timeTotal}`, () => {
         this.timer.replaceChildren(
           h('div.ring' + (t && t.started && left < 5 ? '.low' : ''), raw(`<svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="${R}" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="8"/><circle cx="40" cy="40" r="${R}" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${C * frac} ${C}" style="transition:stroke-dasharray .25s linear"/></svg>`), h('div.v', t ? `${Math.ceil(left)}s` : '—')),
-          h('div', h('div.k', !t ? 'ROLL TO START' : t.started ? (t.playerId === inputId ? 'YOUR TURN' : 'TIME LEFT') : 'TOUCH TO START'),
+          h('div', h('div.k', !t ? 'ROLL TO START' : t.started ? (t.playerId === mine ? 'YOUR TURN' : 'TIME LEFT') : 'TOUCH TO START'),
             h('div.dice', h('div.die', t ? t.a : '?'), h('div.die', t ? t.b : '?')), h('div.eq', t ? `${t.a} + ${t.b} = ${t.a + t.b} × 3 s${t.timeTotal > (t.a + t.b) * 3 * (t.doubled ? 2 : 1) ? ' + fuel' : ''}` : 'total × 3 seconds')));
       });
     } else this._once('timer', 'duel', () => this.timer.replaceChildren(h('div', h('div.k', 'PUBLIC DUEL'), h('div', { style: { fontWeight: 800, fontSize: '22px', marginTop: '2px' } }, `First to ${snap.laps} laps`), h('div.eq', 'Most points wins'))));

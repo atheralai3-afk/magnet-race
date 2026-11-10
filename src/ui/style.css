@@ -386,3 +386,17 @@ input[type=range]::-moz-range-thumb { width: 28px; height: 28px; border: 0; bord
   .pithud { margin-top: 8px; gap: 8px; }
   .x { top: 10px !important; right: 10px !important; }
 }
+
+/* Solo · vs Bots · Pass & Play row: three tiles, icon on top */
+.row.trio { align-items: stretch; }
+.row.trio > .btn { flex: 1 1 0; min-width: 0; flex-direction: column; align-items: flex-start; justify-content: flex-start; padding: 14px 14px 15px; gap: 10px; text-align: left; }
+.row.trio .t1 { font-size: 17px; line-height: 1.15; }
+.row.trio .t2 { font-size: 12.5px; line-height: 1.25; margin-top: 3px; }
+.ic.s.bot { background: linear-gradient(160deg, #7D7AFF, #5E5CE6); }
+@media (max-width: 420px) { .row.trio { gap: 8px !important; } .row.trio > .btn { padding: 12px 10px; } .row.trio .t1 { font-size: 15.5px; } .row.trio .t2 { font-size: 11.5px; } }
+@media (max-height: 520px) { .row.trio > .btn { flex-direction: row; align-items: center; padding: 10px 12px; } .row.trio .t2 { display: none; } }
+/* bot setup sheet */
+.pin .nm { font-weight: 700; font-size: 16px; padding-right: 8px; }
+.botav { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 4px 12px rgba(0,0,0,.25); }
+.botav svg { width: 26px; height: 26px; }
+.avatar.isbot svg { width: 62%; height: 62%; }

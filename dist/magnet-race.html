@@ -403,6 +403,20 @@ input[type=range]::-moz-range-thumb { width: 28px; height: 28px; border: 0; bord
   .x { top: 10px !important; right: 10px !important; }
 }
 
+/* Solo · vs Bots · Pass & Play row: three tiles, icon on top */
+.row.trio { align-items: stretch; }
+.row.trio > .btn { flex: 1 1 0; min-width: 0; flex-direction: column; align-items: flex-start; justify-content: flex-start; padding: 14px 14px 15px; gap: 10px; text-align: left; }
+.row.trio .t1 { font-size: 17px; line-height: 1.15; }
+.row.trio .t2 { font-size: 12.5px; line-height: 1.25; margin-top: 3px; }
+.ic.s.bot { background: linear-gradient(160deg, #7D7AFF, #5E5CE6); }
+@media (max-width: 420px) { .row.trio { gap: 8px !important; } .row.trio > .btn { padding: 12px 10px; } .row.trio .t1 { font-size: 15.5px; } .row.trio .t2 { font-size: 11.5px; } }
+@media (max-height: 520px) { .row.trio > .btn { flex-direction: row; align-items: center; padding: 10px 12px; } .row.trio .t2 { display: none; } }
+/* bot setup sheet */
+.pin .nm { font-weight: 700; font-size: 16px; padding-right: 8px; }
+.botav { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 4px 12px rgba(0,0,0,.25); }
+.botav svg { width: 26px; height: 26px; }
+.avatar.isbot svg { width: 62%; height: 62%; }
+
 </style>
 </head>
 <body>
@@ -1657,8 +1671,89 @@ class NetSession {
 return { NetSession };
 })();
 
-// ---- src/ui/dom.js
+// ---- src/game/bot.js
 const __m18 = (() => {
+const { autoMagnet } = __m11;
+
+// Computer players for "Play vs Bots". A bot does exactly what a person does through the same
+// Match API: roll, hold the magnet ahead of its car, do the pit stop and answer cards.
+const BOT_LEVELS = {
+  easy:   { label: 'Easy',   acc: { easy: 0.6,  medium: 0.4,  hard: 0.25 }, lead: 0.034, wobble: 0.010, think: [3, 6],   pit: [0, 2] },
+  normal: { label: 'Normal', acc: { easy: 0.8,  medium: 0.6,  hard: 0.45 }, lead: 0.037, wobble: 0.005, think: [2, 4.5], pit: [1, 3] },
+  hard:   { label: 'Hard',   acc: { easy: 0.95, medium: 0.85, hard: 0.7 },  lead: 0.040, wobble: 0,     think: [1.2, 3], pit: [2, 3] },
+};
+// named after the scientists the flashcards are about
+const BOT_NAMES = ['Faraday', 'Tesla', 'Curie', 'Ørsted', 'Maxwell', 'Ampère', 'Gilbert', 'Volta'];
+
+function makeBots(n, level, rnd = Math.random) {
+  const pool = BOT_NAMES.slice(), out = [];
+  for (let i = 0; i < n; i++) out.push({ id: 'bot' + (i + 1), name: 'Bot ' + pool.splice(Math.floor(rnd() * pool.length), 1)[0], bot: level });
+  return out;
+}
+
+class BotBrain {
+  // ids: the player ids this brain plays for; rnd: () => [0,1)
+  constructor(match, ids, level = 'normal', rnd = Math.random) {
+    this.m = match; this.ids = new Set(ids); this.L = BOT_LEVELS[level] || BOT_LEVELS.normal; this.rnd = rnd;
+    this.wait = 0; this.key = null; this.t = 0; this.phaseOff = rnd() * 10;
+  }
+  has(id) { return this.ids.has(id); }
+  // the bot whose move it is right now (turn-based races), or null
+  get active() { const c = this.m.current; return c && this.ids.has(c.id) && !c.finished ? c.id : null; }
+  _between([a, b]) { return a + this.rnd() * (b - a); }
+  // wait `sec` once per situation `key`; returns true when it is time to act
+  _after(key, sec) { if (this.key !== key) { this.key = key; this.wait = sec; } return this.wait <= 0; }
+
+  update(dt) {
+    const m = this.m; this.t += dt; this.wait -= dt;
+    // a bot that owes the game an answer (also works when it is not the bot's turn, e.g. duels)
+    for (const [id, q] of m.questions) if (this.ids.has(id)) return this._answer(id, q);
+    const id = this.active; if (!id) return;
+    const P = m.player(id), car = m.car(id);
+    if (m.phase === 'roll') {
+      if (!this._after('roll' + m.log.length, 1.1)) return;
+      if (P.powerups.includes('dice')) m.usePowerup(id, 'dice');
+      if (P.powerups.includes('steal')) m.usePowerup(id, 'steal');
+      m.roll(); return;
+    }
+    if (m.phase === 'pitstop' && m.pit?.playerId === id) {
+      m.setMagnet(id, { x: 0, y: 0, active: false });
+      if (this._after('pit' + m.pit.zoneS, 2.6)) m.pitDone(Math.round(this._between(this.L.pit)));
+      return;
+    }
+    if (m.phase !== 'turn' || !m.turn || m.turn.playerId !== id) return;
+    // pause a moment after the dice so people can see the roll, and lift the magnet after a pit stop
+    if (!m.turn.started && !this._after('go' + m.turn.seconds + ':' + m.log.length, 0.9)) return;
+    if (P.needRelease) { m.setMagnet(id, { x: 0, y: 0, active: false }); return; }
+    if (m.turn.started && P.powerups.includes('fuel') && m.turn.timeLeft < 4) m.usePowerup(id, 'fuel');
+    const target = autoMagnet(m.track, car, { lead: this.L.lead });
+    // easier bots wobble a little, so they sometimes clip a shield or drift wide like a person would
+    if (this.L.wobble) {
+      const p = m.track.pointAt(car.s), w = Math.sin(this.t * 1.7 + this.phaseOff) * this.L.wobble;
+      target.x += p.nx * w; target.y += p.ny * w;
+    }
+    m.setMagnet(id, target);
+  }
+
+  _answer(id, q) {
+    const m = this.m, v = q.view;
+    m.setMagnet(id, { x: 0, y: 0, active: false });
+    if (!this._after('q' + v.drawId, this._between(this.L.think))) return;
+    const live = m.deck.live.get(v.drawId); if (!live) return;
+    const right = this.rnd() < (this.L.acc[v.difficulty] ?? 0.5);
+    let value;
+    if (v.type === 'num') value = right ? live.q.answer : +(live.q.answer * (this.rnd() < 0.5 ? 0.5 : 2) + 1).toFixed(3);
+    else if (right) value = live.correctIndex;
+    else { const n = v.options.length, k = 1 + Math.floor(this.rnd() * (n - 1)); value = (live.correctIndex + k) % n; }
+    m.answer(value);
+  }
+}
+
+return { BOT_LEVELS, BOT_NAMES, makeBots, BotBrain };
+})();
+
+// ---- src/ui/dom.js
+const __m19 = (() => {
 
 // Tiny DOM helper: h(tag.class#id, props, ...children)
 function h(sel, props, ...children) {
@@ -1685,11 +1780,11 @@ return { h, clear, ICON };
 })();
 
 // ---- src/ui/art.js
-const __m19 = (() => {
+const __m20 = (() => {
 
 // Generated from design/ios_art.py and the concept-screen icon set. Do not edit by hand.
 const ART = {"Magnetism": "<svg viewBox=\"0 0 100 100\"> <defs> <radialGradient id=\"glow@U@\" cx=\"50%\" cy=\"50%\" r=\"50%\"><stop offset=\"0\" stop-color=\"@G2@\" stop-opacity=\".22\"/><stop offset=\"1\" stop-color=\"@G2@\" stop-opacity=\"0\"/></radialGradient> <linearGradient id=\"red@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FF6B5E\"/><stop offset=\"1\" stop-color=\"#D7261E\"/></linearGradient> <linearGradient id=\"blue@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#4DA3FF\"/><stop offset=\"1\" stop-color=\"#0060DF\"/></linearGradient> <linearGradient id=\"steel@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FAFAFC\"/><stop offset=\".55\" stop-color=\"#C7C7CC\"/><stop offset=\"1\" stop-color=\"#8E8E93\"/></linearGradient> <radialGradient id=\"ball@U@\" cx=\"35%\" cy=\"30%\" r=\"70%\"><stop offset=\"0\" stop-color=\"#FFFFFF\"/><stop offset=\".45\" stop-color=\"#C9CDD4\"/><stop offset=\"1\" stop-color=\"#6E737C\"/></radialGradient> <linearGradient id=\"gold@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FFE45C\"/><stop offset=\"1\" stop-color=\"#FFB800\"/></linearGradient> <linearGradient id=\"tb@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FFFFFF\"/><stop offset=\"1\" stop-color=\"#EEF0F5\"/></linearGradient> <clipPath id=\"cl@U@\"><path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\"/></clipPath></defs> <path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\" fill=\"url(#tb@U@)\"/> <g clip-path=\"url(#cl@U@)\"><circle cx=\"50\" cy=\"46\" r=\"44\" fill=\"url(#glow@U@)\"/><circle cx=\"50\" cy=\"46\" r=\"30\" fill=\"none\" stroke=\"@G2@\" stroke-opacity=\".14\" stroke-width=\".8\"/><circle cx=\"50\" cy=\"46\" r=\"40\" fill=\"none\" stroke=\"@G2@\" stroke-opacity=\".09\" stroke-width=\".8\"/> <g fill=\"none\" stroke=\"#5E5CE6\" stroke-linecap=\"round\"> <path d=\"M34 66 Q50 84 66 66\" stroke-opacity=\".55\" stroke-width=\"1.6\" stroke-dasharray=\"3 2.6\"/> <path d=\"M31 66 Q50 95 69 66\" stroke-opacity=\".32\" stroke-width=\"1.4\" stroke-dasharray=\"3 2.6\"/> <path d=\"M28 64 Q12 62 12 44\" stroke-opacity=\".22\" stroke-width=\"1.2\" stroke-dasharray=\"3 2.6\"/> <path d=\"M72 64 Q88 62 88 44\" stroke-opacity=\".22\" stroke-width=\"1.2\" stroke-dasharray=\"3 2.6\"/> </g> <ellipse cx=\"50\" cy=\"66\" rx=\"20\" ry=\"3\" fill=\"#000\" fill-opacity=\".08\"/> <path d=\"M28 58V40a22 22 0 0 1 22-22v12a10 10 0 0 0-10 10v18z\" fill=\"url(#red@U@)\"/> <path d=\"M50 18a22 22 0 0 1 22 22v18H60V40a10 10 0 0 0-10-10z\" fill=\"url(#blue@U@)\"/> <path d=\"M31.5 40a18.5 18.5 0 0 1 15-18.2\" fill=\"none\" stroke=\"#fff\" stroke-opacity=\".55\" stroke-width=\"2.4\" stroke-linecap=\"round\"/> <path d=\"M53.5 21.8a18.5 18.5 0 0 1 15 18.2\" fill=\"none\" stroke=\"#fff\" stroke-opacity=\".35\" stroke-width=\"2.4\" stroke-linecap=\"round\"/> <rect x=\"28\" y=\"56\" width=\"12\" height=\"9\" rx=\"1.6\" fill=\"url(#steel@U@)\"/><rect x=\"60\" y=\"56\" width=\"12\" height=\"9\" rx=\"1.6\" fill=\"url(#steel@U@)\"/> <rect x=\"29.5\" y=\"57.2\" width=\"9\" height=\"1.6\" rx=\".8\" fill=\"#fff\" fill-opacity=\".8\"/><rect x=\"61.5\" y=\"57.2\" width=\"9\" height=\"1.6\" rx=\".8\" fill=\"#fff\" fill-opacity=\".8\"/> <g stroke=\"#8E8E93\" stroke-opacity=\".5\" stroke-width=\"1.4\" stroke-linecap=\"round\"><path d=\"M44 92v-3\"/><path d=\"M50 95v-4\"/><path d=\"M56 92v-3\"/></g> <circle cx=\"50\" cy=\"80\" r=\"7\" fill=\"url(#ball@U@)\"/><ellipse cx=\"47.6\" cy=\"77.4\" rx=\"2.2\" ry=\"1.4\" fill=\"#fff\" fill-opacity=\".9\"/> <path transform=\"translate(22 26) scale(0.9)\" fill=\"url(#gold@U@)\" d=\"M0-5C.6-1.6 1.6-.6 5 0 1.6.6.6 1.6 0 5-.6 1.6-1.6.6-5 0-1.6-.6-.6-1.6 0-5z\"/><path transform=\"translate(79 24) scale(0.65)\" fill=\"url(#gold@U@)\" d=\"M0-5C.6-1.6 1.6-.6 5 0 1.6.6.6 1.6 0 5-.6 1.6-1.6.6-5 0-1.6-.6-.6-1.6 0-5z\"/></g> <path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\" fill=\"none\" stroke=\"#fff\" stroke-opacity=\".9\" stroke-width=\".8\"/> </svg>", "Attraction & repulsion": "<svg viewBox=\"0 0 100 100\"> <defs> <radialGradient id=\"glow@U@\" cx=\"50%\" cy=\"50%\" r=\"50%\"><stop offset=\"0\" stop-color=\"@G2@\" stop-opacity=\".22\"/><stop offset=\"1\" stop-color=\"@G2@\" stop-opacity=\"0\"/></radialGradient> <linearGradient id=\"red@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FF6B5E\"/><stop offset=\"1\" stop-color=\"#D7261E\"/></linearGradient> <linearGradient id=\"blue@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#4DA3FF\"/><stop offset=\"1\" stop-color=\"#0060DF\"/></linearGradient> <linearGradient id=\"steel@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FAFAFC\"/><stop offset=\".55\" stop-color=\"#C7C7CC\"/><stop offset=\"1\" stop-color=\"#8E8E93\"/></linearGradient> <radialGradient id=\"ball@U@\" cx=\"35%\" cy=\"30%\" r=\"70%\"><stop offset=\"0\" stop-color=\"#FFFFFF\"/><stop offset=\".45\" stop-color=\"#C9CDD4\"/><stop offset=\"1\" stop-color=\"#6E737C\"/></radialGradient> <linearGradient id=\"gold@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FFE45C\"/><stop offset=\"1\" stop-color=\"#FFB800\"/></linearGradient> <linearGradient id=\"tb@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FFFFFF\"/><stop offset=\"1\" stop-color=\"#EEF0F5\"/></linearGradient> <clipPath id=\"cl@U@\"><path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\"/></clipPath></defs> <path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\" fill=\"url(#tb@U@)\"/> <g clip-path=\"url(#cl@U@)\"><g transform=\"translate(50 50) scale(1.06) translate(-50 -50)\"><circle cx=\"50\" cy=\"50\" r=\"44\" fill=\"url(#glow@U@)\"/><circle cx=\"50\" cy=\"50\" r=\"30\" fill=\"none\" stroke=\"@G2@\" stroke-opacity=\".14\" stroke-width=\".8\"/><circle cx=\"50\" cy=\"50\" r=\"40\" fill=\"none\" stroke=\"@G2@\" stroke-opacity=\".09\" stroke-width=\".8\"/> <g fill=\"none\" stroke=\"#5E5CE6\" stroke-linecap=\"round\" stroke-dasharray=\"3 2.6\"> <path d=\"M40 41 Q50 30 60 41\" stroke-opacity=\".5\" stroke-width=\"1.5\"/><path d=\"M40 59 Q50 70 60 59\" stroke-opacity=\".5\" stroke-width=\"1.5\"/> <path d=\"M36 41 Q50 18 64 41\" stroke-opacity=\".28\" stroke-width=\"1.3\"/><path d=\"M36 59 Q50 82 64 59\" stroke-opacity=\".28\" stroke-width=\"1.3\"/> </g> <g stroke=\"#8E8E93\" stroke-opacity=\".45\" stroke-width=\"1.4\" stroke-linecap=\"round\"><path d=\"M2 46h5\"/><path d=\"M0 54h6\"/><path d=\"M93 46h5\"/><path d=\"M94 54h6\"/></g> <ellipse cx=\"50\" cy=\"63\" rx=\"40\" ry=\"2.6\" fill=\"#000\" fill-opacity=\".07\"/> <rect x=\"9\" y=\"41\" width=\"16\" height=\"18\" rx=\"3.5\" fill=\"url(#blue@U@)\"/><rect x=\"23\" y=\"41\" width=\"16\" height=\"18\" rx=\"3.5\" fill=\"url(#red@U@)\"/><rect x=\"21\" y=\"41\" width=\"6\" height=\"18\" fill=\"url(#red@U@)\"/><rect x=\"11\" y=\"42.6\" width=\"26\" height=\"2.4\" rx=\"1.2\" fill=\"#fff\" fill-opacity=\".45\"/><rect x=\"61\" y=\"41\" width=\"16\" height=\"18\" rx=\"3.5\" fill=\"url(#blue@U@)\"/><rect x=\"75\" y=\"41\" width=\"16\" height=\"18\" rx=\"3.5\" fill=\"url(#red@U@)\"/><rect x=\"73\" y=\"41\" width=\"6\" height=\"18\" fill=\"url(#red@U@)\"/><rect x=\"63\" y=\"42.6\" width=\"26\" height=\"2.4\" rx=\"1.2\" fill=\"#fff\" fill-opacity=\".45\"/> <text x=\"17\" y=\"53.5\" font-family=\"Inter Display\" font-weight=\"800\" font-size=\"8\" fill=\"#fff\" text-anchor=\"middle\">S</text> <text x=\"33\" y=\"53.5\" font-family=\"Inter Display\" font-weight=\"800\" font-size=\"8\" fill=\"#fff\" text-anchor=\"middle\">N</text> <text x=\"69\" y=\"53.5\" font-family=\"Inter Display\" font-weight=\"800\" font-size=\"8\" fill=\"#fff\" text-anchor=\"middle\">S</text> <text x=\"85\" y=\"53.5\" font-family=\"Inter Display\" font-weight=\"800\" font-size=\"8\" fill=\"#fff\" text-anchor=\"middle\">N</text> <circle cx=\"50\" cy=\"50\" r=\"6\" fill=\"url(#gold@U@)\" fill-opacity=\".35\"/><path transform=\"translate(50 50) scale(1.1)\" fill=\"url(#gold@U@)\" d=\"M0-5C.6-1.6 1.6-.6 5 0 1.6.6.6 1.6 0 5-.6 1.6-1.6.6-5 0-1.6-.6-.6-1.6 0-5z\"/> <g fill=\"#34C759\"><path d=\"M43 50l-4-3v6z\"/><path d=\"M57 50l4-3v6z\"/></g></g></g> <path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\" fill=\"none\" stroke=\"#fff\" stroke-opacity=\".9\" stroke-width=\".8\"/> </svg>", "Electromagnetism": "<svg viewBox=\"0 0 100 100\"> <defs> <radialGradient id=\"glow@U@\" cx=\"50%\" cy=\"50%\" r=\"50%\"><stop offset=\"0\" stop-color=\"@G2@\" stop-opacity=\".22\"/><stop offset=\"1\" stop-color=\"@G2@\" stop-opacity=\"0\"/></radialGradient> <linearGradient id=\"red@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FF6B5E\"/><stop offset=\"1\" stop-color=\"#D7261E\"/></linearGradient> <linearGradient id=\"blue@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#4DA3FF\"/><stop offset=\"1\" stop-color=\"#0060DF\"/></linearGradient> <linearGradient id=\"steel@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FAFAFC\"/><stop offset=\".55\" stop-color=\"#C7C7CC\"/><stop offset=\"1\" stop-color=\"#8E8E93\"/></linearGradient> <radialGradient id=\"ball@U@\" cx=\"35%\" cy=\"30%\" r=\"70%\"><stop offset=\"0\" stop-color=\"#FFFFFF\"/><stop offset=\".45\" stop-color=\"#C9CDD4\"/><stop offset=\"1\" stop-color=\"#6E737C\"/></radialGradient> <linearGradient id=\"gold@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FFE45C\"/><stop offset=\"1\" stop-color=\"#FFB800\"/></linearGradient> <linearGradient id=\"tb@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FFFFFF\"/><stop offset=\"1\" stop-color=\"#EEF0F5\"/></linearGradient> <clipPath id=\"cl@U@\"><path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\"/></clipPath></defs> <path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\" fill=\"url(#tb@U@)\"/> <g clip-path=\"url(#cl@U@)\"><defs><linearGradient id=\"cu@U@\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FFC48A\"/><stop offset=\"1\" stop-color=\"#C96A2C\"/></linearGradient></defs> <circle cx=\"50\" cy=\"48\" r=\"44\" fill=\"url(#glow@U@)\"/><circle cx=\"50\" cy=\"48\" r=\"30\" fill=\"none\" stroke=\"@G2@\" stroke-opacity=\".14\" stroke-width=\".8\"/><circle cx=\"50\" cy=\"48\" r=\"40\" fill=\"none\" stroke=\"@G2@\" stroke-opacity=\".09\" stroke-width=\".8\"/> <g fill=\"none\" stroke=\"#5E5CE6\" stroke-linecap=\"round\" stroke-dasharray=\"3 2.6\"> <path d=\"M16 50 C16 24 84 24 84 50\" stroke-opacity=\".5\" stroke-width=\"1.5\"/> <path d=\"M10 50 C10 12 90 12 90 50\" stroke-opacity=\".28\" stroke-width=\"1.3\"/> </g> <rect x=\"17\" y=\"44\" width=\"66\" height=\"12\" rx=\"3\" fill=\"url(#steel@U@)\"/> <rect x=\"19\" y=\"45.4\" width=\"62\" height=\"2\" rx=\"1\" fill=\"#fff\" fill-opacity=\".8\"/> <g fill=\"none\"><path d=\"M30.2 38.5 L25.6 61.5\" stroke=\"#8A4A1F\" stroke-width=\"4.4\" stroke-linecap=\"round\"/><path d=\"M30.2 38.5 L25.6 61.5\" stroke=\"url(#cu@U@)\" stroke-width=\"3.2\" stroke-linecap=\"round\"/><path d=\"M29.6 40 L27.8 49\" stroke=\"#fff\" stroke-opacity=\".6\" stroke-width=\"1\" stroke-linecap=\"round\"/><path d=\"M37.9 38.5 L33.3 61.5\" stroke=\"#8A4A1F\" stroke-width=\"4.4\" stroke-linecap=\"round\"/><path d=\"M37.9 38.5 L33.3 61.5\" stroke=\"url(#cu@U@)\" stroke-width=\"3.2\" stroke-linecap=\"round\"/><path d=\"M37.3 40 L35.5 49\" stroke=\"#fff\" stroke-opacity=\".6\" stroke-width=\"1\" stroke-linecap=\"round\"/><path d=\"M45.6 38.5 L41.0 61.5\" stroke=\"#8A4A1F\" stroke-width=\"4.4\" stroke-linecap=\"round\"/><path d=\"M45.6 38.5 L41.0 61.5\" stroke=\"url(#cu@U@)\" stroke-width=\"3.2\" stroke-linecap=\"round\"/><path d=\"M45.0 40 L43.2 49\" stroke=\"#fff\" stroke-opacity=\".6\" stroke-width=\"1\" stroke-linecap=\"round\"/><path d=\"M53.3 38.5 L48.7 61.5\" stroke=\"#8A4A1F\" stroke-width=\"4.4\" stroke-linecap=\"round\"/><path d=\"M53.3 38.5 L48.7 61.5\" stroke=\"url(#cu@U@)\" stroke-width=\"3.2\" stroke-linecap=\"round\"/><path d=\"M52.7 40 L50.9 49\" stroke=\"#fff\" stroke-opacity=\".6\" stroke-width=\"1\" stroke-linecap=\"round\"/><path d=\"M61.0 38.5 L56.4 61.5\" stroke=\"#8A4A1F\" stroke-width=\"4.4\" stroke-linecap=\"round\"/><path d=\"M61.0 38.5 L56.4 61.5\" stroke=\"url(#cu@U@)\" stroke-width=\"3.2\" stroke-linecap=\"round\"/><path d=\"M60.4 40 L58.6 49\" stroke=\"#fff\" stroke-opacity=\".6\" stroke-width=\"1\" stroke-linecap=\"round\"/><path d=\"M68.7 38.5 L64.1 61.5\" stroke=\"#8A4A1F\" stroke-width=\"4.4\" stroke-linecap=\"round\"/><path d=\"M68.7 38.5 L64.1 61.5\" stroke=\"url(#cu@U@)\" stroke-width=\"3.2\" stroke-linecap=\"round\"/><path d=\"M68.1 40 L66.3 49\" stroke=\"#fff\" stroke-opacity=\".6\" stroke-width=\"1\" stroke-linecap=\"round\"/><path d=\"M76.4 38.5 L71.8 61.5\" stroke=\"#8A4A1F\" stroke-width=\"4.4\" stroke-linecap=\"round\"/><path d=\"M76.4 38.5 L71.8 61.5\" stroke=\"url(#cu@U@)\" stroke-width=\"3.2\" stroke-linecap=\"round\"/><path d=\"M75.8 40 L74.0 49\" stroke=\"#fff\" stroke-opacity=\".6\" stroke-width=\"1\" stroke-linecap=\"round\"/></g> <path d=\"M25.5 61 C24 70 30 74 38 76\" fill=\"none\" stroke=\"#C96A2C\" stroke-width=\"1.8\" stroke-linecap=\"round\"/> <path d=\"M74.5 61 C76 70 70 74 62 76\" fill=\"none\" stroke=\"#C96A2C\" stroke-width=\"1.8\" stroke-linecap=\"round\"/> <rect x=\"37\" y=\"71\" width=\"26\" height=\"12\" rx=\"2.6\" fill=\"#2C2C2E\"/><rect x=\"37\" y=\"71\" width=\"9\" height=\"12\" rx=\"2.6\" fill=\"url(#gold@U@)\"/> <rect x=\"43\" y=\"71\" width=\"3\" height=\"12\" fill=\"url(#gold@U@)\"/><rect x=\"63\" y=\"74.5\" width=\"2.4\" height=\"5\" rx=\"1\" fill=\"#8E8E93\"/> <rect x=\"38.5\" y=\"72.4\" width=\"23\" height=\"1.6\" rx=\".8\" fill=\"#fff\" fill-opacity=\".35\"/> <path d=\"M78 14 70 27h5.4l-2 9 9-13.6h-5.6z\" fill=\"url(#gold@U@)\"/> <text x=\"13\" y=\"53\" font-family=\"Inter Display\" font-weight=\"800\" font-size=\"6.5\" fill=\"#D7261E\" text-anchor=\"middle\">N</text> <text x=\"87\" y=\"53\" font-family=\"Inter Display\" font-weight=\"800\" font-size=\"6.5\" fill=\"#0060DF\" text-anchor=\"middle\">S</text></g> <path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\" fill=\"none\" stroke=\"#fff\" stroke-opacity=\".9\" stroke-width=\".8\"/> </svg>", "Static charge": "<svg viewBox=\"0 0 100 100\"> <defs> <radialGradient id=\"glow@U@\" cx=\"50%\" cy=\"50%\" r=\"50%\"><stop offset=\"0\" stop-color=\"@G2@\" stop-opacity=\".22\"/><stop offset=\"1\" stop-color=\"@G2@\" stop-opacity=\"0\"/></radialGradient> <linearGradient id=\"red@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FF6B5E\"/><stop offset=\"1\" stop-color=\"#D7261E\"/></linearGradient> <linearGradient id=\"blue@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#4DA3FF\"/><stop offset=\"1\" stop-color=\"#0060DF\"/></linearGradient> <linearGradient id=\"steel@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FAFAFC\"/><stop offset=\".55\" stop-color=\"#C7C7CC\"/><stop offset=\"1\" stop-color=\"#8E8E93\"/></linearGradient> <radialGradient id=\"ball@U@\" cx=\"35%\" cy=\"30%\" r=\"70%\"><stop offset=\"0\" stop-color=\"#FFFFFF\"/><stop offset=\".45\" stop-color=\"#C9CDD4\"/><stop offset=\"1\" stop-color=\"#6E737C\"/></radialGradient> <linearGradient id=\"gold@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FFE45C\"/><stop offset=\"1\" stop-color=\"#FFB800\"/></linearGradient> <linearGradient id=\"tb@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FFFFFF\"/><stop offset=\"1\" stop-color=\"#EEF0F5\"/></linearGradient> <clipPath id=\"cl@U@\"><path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\"/></clipPath></defs> <path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\" fill=\"url(#tb@U@)\"/> <g clip-path=\"url(#cl@U@)\"><defs><radialGradient id=\"bal@U@\" cx=\"35%\" cy=\"28%\" r=\"75%\"><stop offset=\"0\" stop-color=\"#7CC0FF\"/><stop offset=\".55\" stop-color=\"#0A84FF\"/><stop offset=\"1\" stop-color=\"#0050B8\"/></radialGradient></defs> <circle cx=\"46\" cy=\"42\" r=\"44\" fill=\"url(#glow@U@)\"/><circle cx=\"46\" cy=\"42\" r=\"30\" fill=\"none\" stroke=\"@G2@\" stroke-opacity=\".14\" stroke-width=\".8\"/><circle cx=\"46\" cy=\"42\" r=\"40\" fill=\"none\" stroke=\"@G2@\" stroke-opacity=\".09\" stroke-width=\".8\"/> <path d=\"M44 67 C44 74 52 76 50 84 C48.6 90 54 93 58 96\" fill=\"none\" stroke=\"#8E8E93\" stroke-width=\"1.2\" stroke-linecap=\"round\"/> <path d=\"M41 64.5h6l-1.6 3.6h-2.8z\" fill=\"#0050B8\"/> <ellipse cx=\"44\" cy=\"40\" rx=\"21\" ry=\"25\" fill=\"url(#bal@U@)\"/> <ellipse cx=\"36\" cy=\"28\" rx=\"5\" ry=\"8\" transform=\"rotate(-25 36 28)\" fill=\"#fff\" fill-opacity=\".45\"/> <rect x=\"33.4\" y=\"29.1\" width=\"5.2\" height=\"1.8\" rx=\".9\" fill=\"#fff\" fill-opacity=\".9\"/><rect x=\"45.4\" y=\"25.1\" width=\"5.2\" height=\"1.8\" rx=\".9\" fill=\"#fff\" fill-opacity=\".9\"/><rect x=\"49.4\" y=\"39.1\" width=\"5.2\" height=\"1.8\" rx=\".9\" fill=\"#fff\" fill-opacity=\".9\"/><rect x=\"35.4\" y=\"43.1\" width=\"5.2\" height=\"1.8\" rx=\".9\" fill=\"#fff\" fill-opacity=\".9\"/><rect x=\"43.4\" y=\"53.1\" width=\"5.2\" height=\"1.8\" rx=\".9\" fill=\"#fff\" fill-opacity=\".9\"/> <g fill=\"none\" stroke=\"@G2@\" stroke-opacity=\".35\" stroke-width=\"1.2\" stroke-linecap=\"round\"><path d=\"M68 34 q6 8 2 16\"/><path d=\"M74 30 q8 11 3 22\"/></g> <path d=\"M66 50 59.5 60h4.3l-1.6 7.6 7.4-11h-4.5z\" fill=\"url(#gold@U@)\"/> <g transform=\"translate(70 70) rotate(-18)\"><rect x=\"-4.5\" y=\"-3.5\" width=\"9\" height=\"7\" rx=\"1\" fill=\"#000\" fill-opacity=\".08\" transform=\"translate(.8 1)\"/><rect x=\"-4.5\" y=\"-3.5\" width=\"9\" height=\"7\" rx=\"1\" fill=\"#FFFFFF\" stroke=\"#D1D1D6\" stroke-width=\".6\"/><path d=\"M-2.6-1h5.2M-2.6 1.2h3.6\" stroke=\"#C7C7CC\" stroke-width=\".7\"/></g><g transform=\"translate(80 82) rotate(14)\"><rect x=\"-4.5\" y=\"-3.5\" width=\"9\" height=\"7\" rx=\"1\" fill=\"#000\" fill-opacity=\".08\" transform=\"translate(.8 1)\"/><rect x=\"-4.5\" y=\"-3.5\" width=\"9\" height=\"7\" rx=\"1\" fill=\"#FFFFFF\" stroke=\"#D1D1D6\" stroke-width=\".6\"/><path d=\"M-2.6-1h5.2M-2.6 1.2h3.6\" stroke=\"#C7C7CC\" stroke-width=\".7\"/></g><g transform=\"translate(62 85) rotate(8)\"><rect x=\"-4.5\" y=\"-3.5\" width=\"9\" height=\"7\" rx=\"1\" fill=\"#000\" fill-opacity=\".08\" transform=\"translate(.8 1)\"/><rect x=\"-4.5\" y=\"-3.5\" width=\"9\" height=\"7\" rx=\"1\" fill=\"#FFFFFF\" stroke=\"#D1D1D6\" stroke-width=\".6\"/><path d=\"M-2.6-1h5.2M-2.6 1.2h3.6\" stroke=\"#C7C7CC\" stroke-width=\".7\"/></g><path transform=\"translate(80 62) scale(0.6)\" fill=\"url(#gold@U@)\" d=\"M0-5C.6-1.6 1.6-.6 5 0 1.6.6.6 1.6 0 5-.6 1.6-1.6.6-5 0-1.6-.6-.6-1.6 0-5z\"/><path transform=\"translate(20 70) scale(0.7)\" fill=\"url(#gold@U@)\" d=\"M0-5C.6-1.6 1.6-.6 5 0 1.6.6.6 1.6 0 5-.6 1.6-1.6.6-5 0-1.6-.6-.6-1.6 0-5z\"/></g> <path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\" fill=\"none\" stroke=\"#fff\" stroke-opacity=\".9\" stroke-width=\".8\"/> </svg>", "Forces & friction": "<svg viewBox=\"0 0 100 100\"> <defs> <radialGradient id=\"glow@U@\" cx=\"50%\" cy=\"50%\" r=\"50%\"><stop offset=\"0\" stop-color=\"@G2@\" stop-opacity=\".22\"/><stop offset=\"1\" stop-color=\"@G2@\" stop-opacity=\"0\"/></radialGradient> <linearGradient id=\"red@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FF6B5E\"/><stop offset=\"1\" stop-color=\"#D7261E\"/></linearGradient> <linearGradient id=\"blue@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#4DA3FF\"/><stop offset=\"1\" stop-color=\"#0060DF\"/></linearGradient> <linearGradient id=\"steel@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FAFAFC\"/><stop offset=\".55\" stop-color=\"#C7C7CC\"/><stop offset=\"1\" stop-color=\"#8E8E93\"/></linearGradient> <radialGradient id=\"ball@U@\" cx=\"35%\" cy=\"30%\" r=\"70%\"><stop offset=\"0\" stop-color=\"#FFFFFF\"/><stop offset=\".45\" stop-color=\"#C9CDD4\"/><stop offset=\"1\" stop-color=\"#6E737C\"/></radialGradient> <linearGradient id=\"gold@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FFE45C\"/><stop offset=\"1\" stop-color=\"#FFB800\"/></linearGradient> <linearGradient id=\"tb@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FFFFFF\"/><stop offset=\"1\" stop-color=\"#EEF0F5\"/></linearGradient> <clipPath id=\"cl@U@\"><path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\"/></clipPath></defs> <path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\" fill=\"url(#tb@U@)\"/> <g clip-path=\"url(#cl@U@)\"><defs><linearGradient id=\"car@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FF6B5E\"/><stop offset=\"1\" stop-color=\"#C81E1E\"/></linearGradient> <linearGradient id=\"sand@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#E3C48E\"/><stop offset=\"1\" stop-color=\"#C79F5F\"/></linearGradient></defs> <circle cx=\"50\" cy=\"58\" r=\"44\" fill=\"url(#glow@U@)\"/><circle cx=\"50\" cy=\"58\" r=\"30\" fill=\"none\" stroke=\"@G2@\" stroke-opacity=\".14\" stroke-width=\".8\"/><circle cx=\"50\" cy=\"58\" r=\"40\" fill=\"none\" stroke=\"@G2@\" stroke-opacity=\".09\" stroke-width=\".8\"/> <rect x=\"6\" y=\"78\" width=\"88\" height=\"11\" rx=\"2.5\" fill=\"url(#sand@U@)\"/><circle cx=\"12\" cy=\"81\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"18\" cy=\"84\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"25\" cy=\"80.5\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"31\" cy=\"83.5\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"38\" cy=\"81\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"45\" cy=\"84.5\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"52\" cy=\"80.8\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"59\" cy=\"83.6\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"66\" cy=\"81.2\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"73\" cy=\"84.4\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"80\" cy=\"80.8\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"87\" cy=\"83.2\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"15\" cy=\"86.5\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"42\" cy=\"87\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/><circle cx=\"70\" cy=\"86.6\" r=\".7\" fill=\"#8A6A3C\" fill-opacity=\".55\"/> <g stroke=\"#8E8E93\" stroke-opacity=\".5\" stroke-width=\"1.6\" stroke-linecap=\"round\"><path d=\"M4 52h9\"/><path d=\"M2 60h10\"/><path d=\"M5 67h7\"/></g> <path d=\"M16 66c0-5 4-7.6 10-8.6l10-9c2-1.8 4.6-2.8 7.4-2.8h18.4c2.8 0 5.4 1 7.4 2.8l8 7.8c5.4.8 10 3.6 10 8.4v4c0 1.6-1.2 2.6-2.6 2.6H18.6c-1.4 0-2.6-1-2.6-2.6z\" fill=\"url(#car@U@)\"/> <path d=\"M39.5 56.5 46 50.2c.8-.8 1.8-1.2 3-1.2h5.6v7.5z\" fill=\"#BFE3FF\"/><path d=\"M58.6 56.5V49h6c1 0 2 .4 2.8 1.2l6.2 6.3z\" fill=\"#BFE3FF\"/> <path d=\"M22 60.6h60\" stroke=\"#fff\" stroke-opacity=\".35\" stroke-width=\"1.6\" stroke-linecap=\"round\"/> <circle cx=\"32\" cy=\"72\" r=\"7.5\" fill=\"#1C1C1E\"/><circle cx=\"32\" cy=\"72\" r=\"3.4\" fill=\"url(#steel@U@)\"/> <circle cx=\"72\" cy=\"72\" r=\"7.5\" fill=\"#1C1C1E\"/><circle cx=\"72\" cy=\"72\" r=\"3.4\" fill=\"url(#steel@U@)\"/> <path d=\"M54 30h24\" stroke=\"#34C759\" stroke-width=\"3.6\" stroke-linecap=\"round\"/><path d=\"M76 24.5 84 30l-8 5.5z\" fill=\"#34C759\"/> <path d=\"M58 95h-20\" stroke=\"#FF9500\" stroke-width=\"3.2\" stroke-linecap=\"round\"/><path d=\"M40 90.2 33 95l7 4.8z\" fill=\"#FF9500\"/></g> <path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\" fill=\"none\" stroke=\"#fff\" stroke-opacity=\".9\" stroke-width=\".8\"/> </svg>", "Magnetic screening": "<svg viewBox=\"0 0 100 100\"> <defs> <radialGradient id=\"glow@U@\" cx=\"50%\" cy=\"50%\" r=\"50%\"><stop offset=\"0\" stop-color=\"@G2@\" stop-opacity=\".22\"/><stop offset=\"1\" stop-color=\"@G2@\" stop-opacity=\"0\"/></radialGradient> <linearGradient id=\"red@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FF6B5E\"/><stop offset=\"1\" stop-color=\"#D7261E\"/></linearGradient> <linearGradient id=\"blue@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#4DA3FF\"/><stop offset=\"1\" stop-color=\"#0060DF\"/></linearGradient> <linearGradient id=\"steel@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FAFAFC\"/><stop offset=\".55\" stop-color=\"#C7C7CC\"/><stop offset=\"1\" stop-color=\"#8E8E93\"/></linearGradient> <radialGradient id=\"ball@U@\" cx=\"35%\" cy=\"30%\" r=\"70%\"><stop offset=\"0\" stop-color=\"#FFFFFF\"/><stop offset=\".45\" stop-color=\"#C9CDD4\"/><stop offset=\"1\" stop-color=\"#6E737C\"/></radialGradient> <linearGradient id=\"gold@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FFE45C\"/><stop offset=\"1\" stop-color=\"#FFB800\"/></linearGradient> <linearGradient id=\"tb@U@\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#FFFFFF\"/><stop offset=\"1\" stop-color=\"#EEF0F5\"/></linearGradient> <clipPath id=\"cl@U@\"><path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\"/></clipPath></defs> <path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\" fill=\"url(#tb@U@)\"/> <g clip-path=\"url(#cl@U@)\"><defs><linearGradient id=\"sh@U@\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" stop-color=\"#B9C3D3\"/><stop offset=\".5\" stop-color=\"#7D8BA3\"/><stop offset=\"1\" stop-color=\"#46536B\"/></linearGradient> <linearGradient id=\"shi@U@\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" stop-color=\"@G1@\"/><stop offset=\"1\" stop-color=\"@G3@\"/></linearGradient></defs> <circle cx=\"50\" cy=\"50\" r=\"44\" fill=\"url(#glow@U@)\"/><circle cx=\"50\" cy=\"50\" r=\"30\" fill=\"none\" stroke=\"@G2@\" stroke-opacity=\".14\" stroke-width=\".8\"/><circle cx=\"50\" cy=\"50\" r=\"40\" fill=\"none\" stroke=\"@G2@\" stroke-opacity=\".09\" stroke-width=\".8\"/> <g fill=\"none\" stroke=\"#5E5CE6\" stroke-linecap=\"round\" stroke-dasharray=\"3 2.6\"> <path d=\"M2 40 C18 40 20 15 50 14 C80 15 82 40 98 40\" stroke-opacity=\".5\" stroke-width=\"1.5\"/> <path d=\"M2 29 C20 29 26 7 50 6 C74 7 80 29 98 29\" stroke-opacity=\".28\" stroke-width=\"1.3\"/> <path d=\"M2 61 C18 61 20 87 50 88 C80 87 82 61 98 61\" stroke-opacity=\".5\" stroke-width=\"1.5\"/> <path d=\"M2 72 C20 72 26 95 50 96 C74 95 80 72 98 72\" stroke-opacity=\".28\" stroke-width=\"1.3\"/> </g> <g fill=\"none\" stroke=\"@G2@\" stroke-linecap=\"round\"><path d=\"M19 38 Q13 50 19 62\" stroke-opacity=\".55\" stroke-width=\"1.6\"/><path d=\"M12 34 Q5 50 12 66\" stroke-opacity=\".3\" stroke-width=\"1.4\"/></g> <ellipse cx=\"50\" cy=\"82\" rx=\"18\" ry=\"2.6\" fill=\"#000\" fill-opacity=\".1\"/> <path d=\"M50 20 73 28.5c1.6.6 2.6 2 2.6 3.7V48c0 14.5-10.4 26-24.6 30.2-.7.2-1.3.2-2 0C34.8 74 24.4 62.5 24.4 48V32.2c0-1.7 1-3.1 2.6-3.7z\" fill=\"url(#sh@U@)\"/> <path d=\"M50 26.5 68.5 33.4V48c0 11.6-8 21-18.5 24.6C39.5 69 31.5 59.6 31.5 48V33.4z\" fill=\"url(#shi@U@)\"/> <path d=\"M50 26.5V72.6C39.5 69 31.5 59.6 31.5 48V33.4z\" fill=\"#fff\" fill-opacity=\".22\"/> <path d=\"M27.6 32.6 50 24.2\" stroke=\"#fff\" stroke-opacity=\".7\" stroke-width=\"1.4\" stroke-linecap=\"round\"/> <path d=\"M42.4 49.4 47.6 54.6 58 43.6\" fill=\"none\" stroke=\"#fff\" stroke-width=\"3.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/> <path transform=\"translate(80 22) scale(0.7)\" fill=\"url(#gold@U@)\" d=\"M0-5C.6-1.6 1.6-.6 5 0 1.6.6.6 1.6 0 5-.6 1.6-1.6.6-5 0-1.6-.6-.6-1.6 0-5z\"/></g> <path d=\"M100.00,50.00 L99.97,65.36 L99.89,70.26 L99.75,73.81 L99.56,76.68 L99.31,79.12 L99.01,81.26 L98.64,83.17 L98.22,84.89 L97.74,86.46 L97.20,87.89 L96.60,89.21 L95.94,90.43 L95.20,91.54 L94.40,92.58 L93.53,93.53 L92.58,94.40 L91.54,95.20 L90.43,95.94 L89.21,96.60 L87.89,97.20 L86.46,97.74 L84.89,98.22 L83.17,98.64 L81.26,99.01 L79.12,99.31 L76.68,99.56 L73.81,99.75 L70.26,99.89 L65.36,99.97 L50.00,100.00 L34.64,99.97 L29.74,99.89 L26.19,99.75 L23.32,99.56 L20.88,99.31 L18.74,99.01 L16.83,98.64 L15.11,98.22 L13.54,97.74 L12.11,97.20 L10.79,96.60 L9.57,95.94 L8.46,95.20 L7.42,94.40 L6.47,93.53 L5.60,92.58 L4.80,91.54 L4.06,90.43 L3.40,89.21 L2.80,87.89 L2.26,86.46 L1.78,84.89 L1.36,83.17 L0.99,81.26 L0.69,79.12 L0.44,76.68 L0.25,73.81 L0.11,70.26 L0.03,65.36 L0.00,50.00 L0.03,34.64 L0.11,29.74 L0.25,26.19 L0.44,23.32 L0.69,20.88 L0.99,18.74 L1.36,16.83 L1.78,15.11 L2.26,13.54 L2.80,12.11 L3.40,10.79 L4.06,9.57 L4.80,8.46 L5.60,7.42 L6.47,6.47 L7.42,5.60 L8.46,4.80 L9.57,4.06 L10.79,3.40 L12.11,2.80 L13.54,2.26 L15.11,1.78 L16.83,1.36 L18.74,0.99 L20.88,0.69 L23.32,0.44 L26.19,0.25 L29.74,0.11 L34.64,0.03 L50.00,0.00 L65.36,0.03 L70.26,0.11 L73.81,0.25 L76.68,0.44 L79.12,0.69 L81.26,0.99 L83.17,1.36 L84.89,1.78 L86.46,2.26 L87.89,2.80 L89.21,3.40 L90.43,4.06 L91.54,4.80 L92.58,5.60 L93.53,6.47 L94.40,7.42 L95.20,8.46 L95.94,9.57 L96.60,10.79 L97.20,12.11 L97.74,13.54 L98.22,15.11 L98.64,16.83 L99.01,18.74 L99.31,20.88 L99.56,23.32 L99.75,26.19 L99.89,29.74 L99.97,34.64 Z\" fill=\"none\" stroke=\"#fff\" stroke-opacity=\".9\" stroke-width=\".8\"/> </svg>"};
-const ICONS = {"rotate": "<path d=\"M4.5 12a7.5 7.5 0 0 1 13-5.1\" stroke=\"#fff\" stroke-width=\"2.2\" fill=\"none\" stroke-linecap=\"round\"/><path d=\"M18.5 3.5v4h-4\" stroke=\"#fff\" stroke-width=\"2.2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><rect x=\"7\" y=\"11\" width=\"10\" height=\"9\" rx=\"2\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\"/>", "duel": "<path d=\"M5 19 19 5M15 5h4v4M19 19 5 5M5 9V5h4\" stroke=\"#fff\" stroke-width=\"2.2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>", "lock": "<rect x=\"5\" y=\"10.5\" width=\"14\" height=\"10\" rx=\"3\" fill=\"#fff\"/><path d=\"M8 10.5V8a4 4 0 0 1 8 0v2.5\" stroke=\"#fff\" stroke-width=\"2.2\" fill=\"none\"/>", "users": "<circle cx=\"9\" cy=\"8\" r=\"3.4\" fill=\"#fff\"/><path d=\"M2.5 19c.6-3.6 3.3-5.6 6.5-5.6s5.9 2 6.5 5.6\" fill=\"#fff\"/><circle cx=\"17\" cy=\"9\" r=\"2.6\" fill=\"#fff\" fill-opacity=\".7\"/><path d=\"M16 13.6c2.8 0 4.8 1.6 5.4 4.6\" stroke=\"#fff\" stroke-opacity=\".7\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\"/>", "flask": "<path d=\"M9 3h6M10 3v6l-5 9c-.7 1.3.2 3 1.7 3h10.6c1.5 0 2.4-1.7 1.7-3l-5-9V3\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\" stroke-linejoin=\"round\"/><path d=\"M7.3 15h9.4l1.8 3.3c.3.6-.1 1.2-.8 1.2H6.3c-.7 0-1.1-.6-.8-1.2z\" fill=\"#fff\"/>", "chev": "<path d=\"M9 5l7 7-7 7\" stroke=\"#fff\" stroke-width=\"2.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>", "trophy": "<path d=\"M7 4h10v5a5 5 0 0 1-10 0z\" fill=\"#fff\"/><path d=\"M7 6H4.5a2.5 2.5 0 0 0 2.5 4M17 6h2.5a2.5 2.5 0 0 1-2.5 4\" stroke=\"#fff\" stroke-width=\"1.8\" fill=\"none\"/><rect x=\"11\" y=\"13\" width=\"2\" height=\"4\" fill=\"#fff\"/><rect x=\"8\" y=\"17\" width=\"8\" height=\"3\" rx=\"1\" fill=\"#fff\"/>", "home": "<path d=\"M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z\" fill=\"#fff\"/>", "person": "<circle cx=\"12\" cy=\"8\" r=\"4\" fill=\"#fff\"/><path d=\"M4 20c.8-4.2 4-6.6 8-6.6s7.2 2.4 8 6.6\" fill=\"#fff\"/>", "copy": "<rect x=\"8\" y=\"8\" width=\"12\" height=\"12\" rx=\"3\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\"/><path d=\"M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\"/>", "share": "<path d=\"M12 3v12M7.5 7.5 12 3l4.5 4.5\" stroke=\"#fff\" stroke-width=\"2.2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M8 11H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-2\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\"/>", "x": "<path d=\"M6 6l12 12M18 6 6 18\" stroke=\"#fff\" stroke-width=\"2.4\" stroke-linecap=\"round\"/>", "fuel": "<rect x=\"4\" y=\"3\" width=\"10\" height=\"18\" rx=\"2.5\" fill=\"#fff\"/><rect x=\"6.5\" y=\"5.5\" width=\"5\" height=\"5\" rx=\"1\" fill=\"#0A84FF\"/><path d=\"M14 9h2.5a1.5 1.5 0 0 1 1.5 1.5V17a1.5 1.5 0 0 0 3 0V8l-3-3\" stroke=\"#fff\" stroke-width=\"1.8\" fill=\"none\" stroke-linecap=\"round\"/>", "skip": "<path d=\"M4 6v12l8-6zM12 6v12l8-6z\" fill=\"#fff\"/>", "dice": "<rect x=\"3.5\" y=\"3.5\" width=\"17\" height=\"17\" rx=\"4.5\" fill=\"#fff\"/><g fill=\"#5E5CE6\"><circle cx=\"8.5\" cy=\"8.5\" r=\"1.6\"/><circle cx=\"15.5\" cy=\"15.5\" r=\"1.6\"/><circle cx=\"15.5\" cy=\"8.5\" r=\"1.6\"/><circle cx=\"8.5\" cy=\"15.5\" r=\"1.6\"/></g>", "steal": "<path d=\"M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z\" fill=\"#fff\"/>", "flame": "<path d=\"M12 2c1 3.5 5 5.6 5 10.6A5 5 0 0 1 7 12.6c0-2.2 1-3.6 2.2-4.8.2 1.8 1 2.8 2.2 3.2C11 8.4 11.2 5 12 2z\" fill=\"#FFD60A\"/><path d=\"M12 13c.6 1.4 2.2 2.2 2.2 4a2.2 2.2 0 0 1-4.4 0c0-1.2.8-2 2.2-4z\" fill=\"#FF9F0A\"/>", "check": "<path d=\"M5 12.5 10 17.5 19 7\" stroke=\"#fff\" stroke-width=\"3\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>", "globe": "<circle cx=\"12\" cy=\"12\" r=\"8.5\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\"/><path d=\"M3.5 12h17M12 3.5c3 3 3 14 0 17M12 3.5c-3 3-3 14 0 17\" stroke=\"#fff\" stroke-width=\"1.6\" fill=\"none\"/>"};
+const ICONS = {"bot": "<rect x=\"4\" y=\"7\" width=\"16\" height=\"12\" rx=\"4\" fill=\"#fff\"/><circle cx=\"9.2\" cy=\"12.6\" r=\"1.7\" fill=\"#5E5CE6\"/><circle cx=\"14.8\" cy=\"12.6\" r=\"1.7\" fill=\"#5E5CE6\"/><path d=\"M12 7V4.2\" stroke=\"#fff\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"12\" cy=\"3.6\" r=\"1.5\" fill=\"#fff\"/><path d=\"M2.5 11.5v3.5M21.5 11.5v3.5\" stroke=\"#fff\" stroke-width=\"2\" stroke-linecap=\"round\"/><path d=\"M9.5 16.3h5\" stroke=\"#5E5CE6\" stroke-width=\"1.6\" stroke-linecap=\"round\"/>", "rotate": "<path d=\"M4.5 12a7.5 7.5 0 0 1 13-5.1\" stroke=\"#fff\" stroke-width=\"2.2\" fill=\"none\" stroke-linecap=\"round\"/><path d=\"M18.5 3.5v4h-4\" stroke=\"#fff\" stroke-width=\"2.2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><rect x=\"7\" y=\"11\" width=\"10\" height=\"9\" rx=\"2\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\"/>", "duel": "<path d=\"M5 19 19 5M15 5h4v4M19 19 5 5M5 9V5h4\" stroke=\"#fff\" stroke-width=\"2.2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>", "lock": "<rect x=\"5\" y=\"10.5\" width=\"14\" height=\"10\" rx=\"3\" fill=\"#fff\"/><path d=\"M8 10.5V8a4 4 0 0 1 8 0v2.5\" stroke=\"#fff\" stroke-width=\"2.2\" fill=\"none\"/>", "users": "<circle cx=\"9\" cy=\"8\" r=\"3.4\" fill=\"#fff\"/><path d=\"M2.5 19c.6-3.6 3.3-5.6 6.5-5.6s5.9 2 6.5 5.6\" fill=\"#fff\"/><circle cx=\"17\" cy=\"9\" r=\"2.6\" fill=\"#fff\" fill-opacity=\".7\"/><path d=\"M16 13.6c2.8 0 4.8 1.6 5.4 4.6\" stroke=\"#fff\" stroke-opacity=\".7\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\"/>", "flask": "<path d=\"M9 3h6M10 3v6l-5 9c-.7 1.3.2 3 1.7 3h10.6c1.5 0 2.4-1.7 1.7-3l-5-9V3\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\" stroke-linejoin=\"round\"/><path d=\"M7.3 15h9.4l1.8 3.3c.3.6-.1 1.2-.8 1.2H6.3c-.7 0-1.1-.6-.8-1.2z\" fill=\"#fff\"/>", "chev": "<path d=\"M9 5l7 7-7 7\" stroke=\"#fff\" stroke-width=\"2.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>", "trophy": "<path d=\"M7 4h10v5a5 5 0 0 1-10 0z\" fill=\"#fff\"/><path d=\"M7 6H4.5a2.5 2.5 0 0 0 2.5 4M17 6h2.5a2.5 2.5 0 0 1-2.5 4\" stroke=\"#fff\" stroke-width=\"1.8\" fill=\"none\"/><rect x=\"11\" y=\"13\" width=\"2\" height=\"4\" fill=\"#fff\"/><rect x=\"8\" y=\"17\" width=\"8\" height=\"3\" rx=\"1\" fill=\"#fff\"/>", "home": "<path d=\"M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z\" fill=\"#fff\"/>", "person": "<circle cx=\"12\" cy=\"8\" r=\"4\" fill=\"#fff\"/><path d=\"M4 20c.8-4.2 4-6.6 8-6.6s7.2 2.4 8 6.6\" fill=\"#fff\"/>", "copy": "<rect x=\"8\" y=\"8\" width=\"12\" height=\"12\" rx=\"3\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\"/><path d=\"M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\"/>", "share": "<path d=\"M12 3v12M7.5 7.5 12 3l4.5 4.5\" stroke=\"#fff\" stroke-width=\"2.2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M8 11H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-2\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\"/>", "x": "<path d=\"M6 6l12 12M18 6 6 18\" stroke=\"#fff\" stroke-width=\"2.4\" stroke-linecap=\"round\"/>", "fuel": "<rect x=\"4\" y=\"3\" width=\"10\" height=\"18\" rx=\"2.5\" fill=\"#fff\"/><rect x=\"6.5\" y=\"5.5\" width=\"5\" height=\"5\" rx=\"1\" fill=\"#0A84FF\"/><path d=\"M14 9h2.5a1.5 1.5 0 0 1 1.5 1.5V17a1.5 1.5 0 0 0 3 0V8l-3-3\" stroke=\"#fff\" stroke-width=\"1.8\" fill=\"none\" stroke-linecap=\"round\"/>", "skip": "<path d=\"M4 6v12l8-6zM12 6v12l8-6z\" fill=\"#fff\"/>", "dice": "<rect x=\"3.5\" y=\"3.5\" width=\"17\" height=\"17\" rx=\"4.5\" fill=\"#fff\"/><g fill=\"#5E5CE6\"><circle cx=\"8.5\" cy=\"8.5\" r=\"1.6\"/><circle cx=\"15.5\" cy=\"15.5\" r=\"1.6\"/><circle cx=\"15.5\" cy=\"8.5\" r=\"1.6\"/><circle cx=\"8.5\" cy=\"15.5\" r=\"1.6\"/></g>", "steal": "<path d=\"M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z\" fill=\"#fff\"/>", "flame": "<path d=\"M12 2c1 3.5 5 5.6 5 10.6A5 5 0 0 1 7 12.6c0-2.2 1-3.6 2.2-4.8.2 1.8 1 2.8 2.2 3.2C11 8.4 11.2 5 12 2z\" fill=\"#FFD60A\"/><path d=\"M12 13c.6 1.4 2.2 2.2 2.2 4a2.2 2.2 0 0 1-4.4 0c0-1.2.8-2 2.2-4z\" fill=\"#FF9F0A\"/>", "check": "<path d=\"M5 12.5 10 17.5 19 7\" stroke=\"#fff\" stroke-width=\"3\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>", "globe": "<circle cx=\"12\" cy=\"12\" r=\"8.5\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\"/><path d=\"M3.5 12h17M12 3.5c3 3 3 14 0 17M12 3.5c-3 3-3 14 0 17\" stroke=\"#fff\" stroke-width=\"1.6\" fill=\"none\"/>"};
 let n = 0;
 const PAL = { easy: ['#5BE584', '#34C759', '#1FA84F'], medium: ['#FFC04D', '#FF9500', '#F07800'], hard: ['#FF7A70', '#FF3B30', '#E01E3C'], blue: ['#6AB8FF', '#0A84FF', '#5E5CE6'] };
 // Topic illustration in an app-icon tile. level picks the colour family.
@@ -1717,7 +1812,7 @@ return { ART, ICONS, art, icon };
 })();
 
 // ---- src/ui/sound.js
-const __m20 = (() => {
+const __m21 = (() => {
 
 // Synthesised UI sounds (Web Audio) — no files to load. Starts on the first user gesture.
 let ctx = null, master = null, hum = null, muted = false;
@@ -1776,7 +1871,7 @@ return { sound, haptic };
 })();
 
 // ---- src/ui/motion.js
-const __m21 = (() => {
+const __m22 = (() => {
 
 // Apple-style motion: springs, magnetic buttons, glass tilt + sheen, press ripple, liquid tab lens.
 // Call enhance(root) after building DOM; it wires every .mag / .tilt / [data-ripple] inside.
@@ -1899,10 +1994,10 @@ return { spring, enhance, tabLens, tween, pointerFine };
 })();
 
 // ---- src/ui/screens.js
-const __m22 = (() => {
-const { h, clear } = __m18;
-const { art, icon } = __m19;
-const { enhance, tabLens, tween } = __m21;
+const __m23 = (() => {
+const { h, clear } = __m19;
+const { art, icon } = __m20;
+const { enhance, tabLens, tween } = __m22;
 const { POWERUPS } = __m9;
 const { PLAYER_COLORS } = __m15;
 
@@ -1917,7 +2012,7 @@ const raw = (html) => { const t = document.createElement('template'); t.innerHTM
 const ic = (name, size) => raw(icon(name, size));
 const tileArt = (topic, level, size) => h('div.tile', raw(art(topic, level, size)));
 const initial = (n) => (n || '?').trim()[0]?.toUpperCase() || '?';
-const avatar = (name, color, cls = '') => h('div.avatar' + cls, { style: { background: `linear-gradient(135deg, ${color}, ${shade(color)})` } }, initial(name));
+const avatar = (name, color, cls = '') => h('div.avatar' + cls + (/^Bot /.test(name || '') ? '.isbot' : ''), { style: { background: `linear-gradient(135deg, ${color}, ${shade(color)})` } }, /^Bot /.test(name || '') ? ic('bot', 22) : initial(name));
 function shade(hex) { const n = parseInt(hex.slice(1), 16), f = .72; return `rgb(${(n >> 16 & 255) * f | 0},${(n >> 8 & 255) * f | 0},${(n & 255) * f | 0})`; }
 const btn = (cls, iconName, t1, t2, props = {}) => h('button.btn' + cls, props, iconName ? h('div.ic', ic(iconName, 28)) : null, h('div.txt', h('div.t1', t1), t2 ? h('div.t2', t2) : null), cls.includes('.sm') ? null : h('div.chev', ic('chev')));
 
@@ -1943,7 +2038,7 @@ function openSheet(content, { onClose, dismissible = true, menu = true, cls = ''
 }
 
 // ------------------------------------------------------------------ home
-function homeScreen({ online, prof, challenge, onSolo, onPass, onCreateRoom, onJoin, onDuel, onEditName }) {
+function homeScreen({ online, prof, challenge, onSolo, onBots, onPass, onCreateRoom, onJoin, onDuel, onEditName }) {
   let code = '';
   const join = h('button.btn.sm.clear', { disabled: true, onclick: () => onJoin(code) }, h('div.txt', h('div.t1', 'Join')));
   const codeField = h('input.field.code', { placeholder: 'Room code', disabled: !online, maxLength: 8, 'aria-label': 'Room code',
@@ -1964,9 +2059,10 @@ function homeScreen({ online, prof, challenge, onSolo, onPass, onCreateRoom, onJ
           btn('.green', 'duel', 'Public Duel', online ? 'Get matched with a random player · 1v1' : 'Online play is off · see the note', { onclick: onDuel, disabled: !online }),
           btn('.blue', 'lock', 'Create Private Room', 'Invite up to 3 friends with a code', { onclick: onCreateRoom, disabled: !online }),
           h('div.row', { style: { gap: '12px' } }, codeField, join),
-          h('div.row', { style: { gap: '12px' } },
-            h('button.btn.clear', { onclick: onSolo, style: { flex: 1 } }, h('div.ic.s', ic('flag', 22)), h('div.txt', h('div.t1', { style: { fontSize: '18px' } }, 'Solo'), h('div.t2', 'Practice race'))),
-            h('button.btn.clear', { onclick: onPass, style: { flex: 1 } }, h('div.ic.s', ic('users', 22)), h('div.txt', h('div.t1', { style: { fontSize: '18px' } }, 'Pass & Play'), h('div.t2', '2–4 on one device')))),
+          h('div.row.trio', { style: { gap: '12px' } },
+            h('button.btn.clear', { onclick: onSolo }, h('div.ic.s', ic('flag', 22)), h('div.txt', h('div.t1', 'Solo'), h('div.t2', 'Practice race'))),
+            h('button.btn.clear', { onclick: onBots }, h('div.ic.s.bot', ic('bot', 22)), h('div.txt', h('div.t1', 'vs Bots'), h('div.t2', 'Race the computer'))),
+            h('button.btn.clear', { onclick: onPass }, h('div.ic.s', ic('users', 22)), h('div.txt', h('div.t1', 'Pass & Play'), h('div.t2', '2–4 on one device')))),
         )),
       h('div.side',
         h('div.glass.panel.tilt',
@@ -2003,6 +2099,26 @@ function passSetupSheet({ names = [], onStart, onClose }) {
   const d = openSheet([h('h2', 'Pass & Play'), h('div.lead', 'Take turns on one device. Hand it over when your turn ends.'),
     h('div.row', { style: { marginTop: '22px', gap: '14px' } }, h('b', 'Players'), seg), grid,
     h('div.foot', h('span.sub', { style: { fontSize: '14px' } }, '3 laps · most points wins'), btn('.green.sm', 'flag', 'Start race', null, { onclick: () => { d.close(true); onStart(Array.from({ length: count }, (_, i) => ({ id: 'p' + (i + 1), name: (vals[i] || '').trim() || `Player ${i + 1}`, color: PLAYER_COLORS[i] }))); } }))], { onClose });
+  return d;
+}
+
+function botSetupSheet({ count = 1, level = 'normal', onStart, onClose }) {
+  const LEVELS = [['easy', 'Easy', 'Gets about half the cards right'], ['normal', 'Normal', 'A solid IGCSE student'], ['hard', 'Hard', 'Knows almost every answer']];
+  const seg = (vals, cur, label, pick) => { const el = h('div.seg', vals.map(v => h('button', { className: v === cur ? 'on' : '', onclick: () => { pick(v); [...el.children].forEach((b, i) => b.classList.toggle('on', vals[i] === v)); render(); } }, label(v)))); return el; };
+  const crew = h('div.pgrid'), hint = h('div.sub', { style: { fontSize: '14px', marginTop: '10px' } });
+  const render = () => {
+    clear(crew);
+    crew.append(h('div.pin', avatar('You', PLAYER_COLORS[0]), h('div.nm', 'You')));
+    for (let i = 0; i < count; i++) crew.append(h('div.pin', { style: { animationDelay: (i + 1) * 50 + 'ms' } }, h('div.botav', { style: { background: PLAYER_COLORS[i + 1] } }, ic('bot', 26)), h('div.nm', 'Bot ' + (i + 1))));
+    hint.textContent = LEVELS.find(l => l[0] === level)[2] + '. Bots drive with the same magnet physics as you.';
+  };
+  const segN = seg([1, 2, 3], count, String, v => count = v);
+  const segL = seg(LEVELS.map(l => l[0]), level, v => LEVELS.find(l => l[0] === v)[1], v => level = v);
+  render();
+  const d = openSheet([h('h2', 'Race vs Bots'), h('div.lead', 'Take turns with computer players. They roll, steer, do the pit stop and answer cards.'),
+    h('div.row', { style: { marginTop: '22px', gap: '14px' } }, h('b', 'Bots'), segN),
+    h('div.row', { style: { marginTop: '14px', gap: '14px' } }, h('b', 'Level'), segL), hint, crew,
+    h('div.foot', h('span.sub', { style: { fontSize: '14px' } }, '3 laps · bot turns play at 2× speed'), btn('.green.sm', 'flag', 'Start race', null, { onclick: () => { d.close(true); onStart(count, level); } }))], { onClose });
   return d;
 }
 
@@ -2159,8 +2275,9 @@ class Hud {
     Object.assign(this.phys.style, { left: x + 'px', top: y + 'px', maxWidth: w + 'px' });
     this.phys.classList.toggle('tiny', hgt < 150);
   }
-  update(snap, inputId, track) {
-    const P = snap.players.find(p => p.id === inputId) || snap.players[0];
+  // inputId: the player the HUD follows; me: who is holding this device (when one person is), for lap/streak and "YOUR TURN"
+  update(snap, inputId, track, { me = null, mine = null } = {}) {
+    const P = snap.players.find(p => p.id === (me || inputId)) || snap.players[0];
     this._once('lap', `${P.lap}:${snap.laps}:${P.streak}`, () => {
       this.lap.replaceChildren(h('div.k', 'LAP'), h('div.v', String(Math.min(P.lap + 1, snap.laps)), h('small', ` / ${snap.laps}`)));
       this.streakEl.replaceChildren(P.streak >= 3 ? h('div.glass.pill.streak', ic('flame', 18), `Streak ×${P.streak >= 5 ? 2 : 1.5}`) : '');
@@ -2179,10 +2296,10 @@ class Hud {
     if (snap.mode === 'turns') {
       const left = t ? Math.max(0, t.timeLeft) : 0, frac = t ? Math.min(1, left / t.timeTotal) : 0, R = 33, C = 2 * Math.PI * R;
       const col = frac > .5 ? '#34C759' : frac > .25 ? '#FF9F0A' : '#FF3B30';
-      this._once('timer', `${t ? Math.ceil(left * 4) : -1}:${t?.started}:${t?.a}:${t?.timeTotal}`, () => {
+      this._once('timer', `${t ? Math.ceil(left * 4) : -1}:${t?.playerId}:${t?.started}:${t?.a}:${t?.timeTotal}`, () => {
         this.timer.replaceChildren(
           h('div.ring' + (t && t.started && left < 5 ? '.low' : ''), raw(`<svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="${R}" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="8"/><circle cx="40" cy="40" r="${R}" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${C * frac} ${C}" style="transition:stroke-dasharray .25s linear"/></svg>`), h('div.v', t ? `${Math.ceil(left)}s` : '—')),
-          h('div', h('div.k', !t ? 'ROLL TO START' : t.started ? (t.playerId === inputId ? 'YOUR TURN' : 'TIME LEFT') : 'TOUCH TO START'),
+          h('div', h('div.k', !t ? 'ROLL TO START' : t.started ? (t.playerId === mine ? 'YOUR TURN' : 'TIME LEFT') : 'TOUCH TO START'),
             h('div.dice', h('div.die', t ? t.a : '?'), h('div.die', t ? t.b : '?')), h('div.eq', t ? `${t.a} + ${t.b} = ${t.a + t.b} × 3 s${t.timeTotal > (t.a + t.b) * 3 * (t.doubled ? 2 : 1) ? ' + fuel' : ''}` : 'total × 3 seconds')));
       });
     } else this._once('timer', 'duel', () => this.timer.replaceChildren(h('div', h('div.k', 'PUBLIC DUEL'), h('div', { style: { fontWeight: 800, fontSize: '22px', marginTop: '2px' } }, `First to ${snap.laps} laps`), h('div.eq', 'Most points wins'))));
@@ -2246,15 +2363,15 @@ class Hud {
   destroy() { this.layer.remove(); }
 }
 
-return { openSheet, homeScreen, tabBar, passSetupSheet, nameSheet, confirmSheet, rulesSheet, lobbySheet, searchingSheet, questionSheet, resultsSheet, Hud };
+return { openSheet, homeScreen, tabBar, passSetupSheet, botSetupSheet, nameSheet, confirmSheet, rulesSheet, lobbySheet, searchingSheet, questionSheet, resultsSheet, Hud };
 })();
 
 // ---- src/ui/pitstop.js
-const __m23 = (() => {
-const { h } = __m18;
-const { openSheet } = __m22;
-const { icon } = __m19;
-const { sound } = __m20;
+const __m24 = (() => {
+const { h } = __m19;
+const { openSheet } = __m23;
+const { icon } = __m20;
+const { sound } = __m21;
 
 
 
@@ -2408,12 +2525,12 @@ return { pitStopSheet };
 })();
 
 // ---- src/ui/lab.js
-const __m24 = (() => {
-const { h } = __m18;
-const { icon } = __m19;
-const { enhance } = __m21;
+const __m25 = (() => {
+const { h } = __m19;
+const { icon } = __m20;
+const { enhance } = __m22;
 const { PHYSICS, magnetPull } = __m4;
-const { sound } = __m20;
+const { sound } = __m21;
 
 
 
@@ -2567,7 +2684,7 @@ return { labScreen };
 })();
 
 // ---- src/main.js
-const __m25 = (() => {
+const __m26 = (() => {
 const { config } = __m0;
 const { Track } = __m2;
 const { classic } = __m3;
@@ -2580,13 +2697,15 @@ const { makeTransport, isOnline } = __m14;
 const { Room, PLAYER_COLORS } = __m15;
 const { Matchmaker } = __m16;
 const { NetSession } = __m17;
+const { BotBrain, makeBots } = __m18;
 const { randomSeed } = __m7;
-const { h, clear } = __m18;
-const { icon } = __m19;
-const { sound, haptic } = __m20;
-const { homeScreen, tabBar, passSetupSheet, nameSheet, confirmSheet, rulesSheet, lobbySheet, searchingSheet, questionSheet, resultsSheet, Hud } = __m22;
-const { pitStopSheet } = __m23;
-const { labScreen } = __m24;
+const { h, clear } = __m19;
+const { icon } = __m20;
+const { sound, haptic } = __m21;
+const { homeScreen, tabBar, passSetupSheet, botSetupSheet, nameSheet, confirmSheet, rulesSheet, lobbySheet, searchingSheet, questionSheet, resultsSheet, Hud } = __m23;
+const { pitStopSheet } = __m24;
+const { labScreen } = __m25;
+
 
 
 
@@ -2671,14 +2790,22 @@ function showTab(tab) {
   const prof = profile();
   app.content.append(homeScreen({
     online, prof, challenge: todaysChallenge(),
-    onSolo: () => startLocal([{ id: 'p1', name: prof.name || 'You', color: PLAYER_COLORS[0] }]),
-    onPass: () => passSetupSheet({ names: app.lastNames, onStart: players => { app.lastNames = players.map(p => p.name); startLocal(players); } }),
-    onCreateRoom: () => withName(n => openRoom({ name: n, isHost: true })),
-    onJoin: code => withName(n => openRoom({ name: n, code })),
-    onDuel: () => withName(findDuel),
+    onSolo: once(() => startLocal([{ id: 'p1', name: prof.name || 'You', color: PLAYER_COLORS[0] }])),
+    onBots: once(() => botSetupSheet({ count: app.botCount, level: app.botLevel, onStart: (count, level) => {
+      app.botCount = count; app.botLevel = level;
+      startLocal([{ id: 'p1', name: profile().name || 'You', color: PLAYER_COLORS[0] }, ...makeBots(count, level).map((b, i) => ({ ...b, color: PLAYER_COLORS[i + 1] }))], { botLevel: level });
+    } })),
+    onPass: once(() => passSetupSheet({ names: app.lastNames, onStart: players => { app.lastNames = players.map(p => p.name); startLocal(players); } })),
+    onCreateRoom: once(() => withName(n => openRoom({ name: n, isHost: true }))),
+    onJoin: once(code => withName(n => openRoom({ name: n, code }))),
+    onDuel: once(() => withName(findDuel)),
     onEditName: () => nameSheet({ title: 'Your name', sub: 'Shown on your car and to other players.', cta: 'Save', name: prof.name, onGo: n => { setName(n); showTab('play'); } }),
   }));
 }
+// One thing at a time: ignore taps while a sheet is open, a connection is being made, or a race is running.
+let busy = false;
+const sheetOpen = () => !!ui.querySelector('.dim:not(.out)');
+function once(fn) { return (...a) => { if (busy || sheetOpen() || app.state !== 'menu') return; fn(...a); }; }
 function withName(go) {
   const n = profile().name;
   if (n) return go(n);
@@ -2686,17 +2813,22 @@ function withName(go) {
 }
 
 // ------------------------------------------------------------------ local games
-function startLocal(players) {
+function startLocal(players, { botLevel = null } = {}) {
   stopGame();
   app.match = new Match({ mode: 'turns', players, track, laps: LAPS, seed: randomSeed() });
-  app.inputIds = new Set(players.map(p => p.id)); app.local = true;
+  const botIds = players.filter(p => p.bot).map(p => p.id);
+  app.bots = botIds.length ? new BotBrain(app.match, botIds, botLevel || players.find(p => p.bot).bot) : null;
+  app.lastLocal = { players, botLevel };
+  app.inputIds = new Set(players.filter(p => !p.bot).map(p => p.id)); app.local = true;
   app.match.start();
   beginRace();
 }
 
 // ------------------------------------------------------------------ online games
 async function openRoom({ name, code, isHost }) {
+  if (busy) return;
   let room = null, lobby = null;
+  busy = true; menuToast(isHost ? 'Creating your room…' : 'Joining ' + code + '…', 1600);
   try {
     const transport = await makeTransport(config, clientId);
     room = await new Room(transport, { name, code, isHost }).open();
@@ -2716,8 +2848,10 @@ async function openRoom({ name, code, isHost }) {
       else lobby.rerender();
     });
   } catch (e) { console.error(e); lobby?.close(true); room?.leave(); menuToast('Could not connect to the game server.'); }
+  finally { busy = false; }
 }
 async function findDuel(name) {
+  if (busy) return;
   let cancelled = false, mm = null;
   const search = searchingSheet({ me: name, onCancel: () => { cancelled = true; mm?.cancel(); } });
   try {
@@ -2737,6 +2871,7 @@ async function findDuel(name) {
 async function startNet(transport, code, start) {
   stopGame();
   app.session = new NetSession(transport, { code, start, track });
+  busy = true;
   try {
     app.match = await app.session.open({ onWaiting: names => menuToast('Waiting for ' + names.join(', ') + '…', 4000) });
   } catch (e) {
@@ -2744,7 +2879,7 @@ async function startNet(transport, code, start) {
     home();
     menuToast(e.message === 'opponent' ? 'Your opponent could not connect. Try Public Duel again.' : e.message === 'nobody' ? 'Nobody else joined the game.' : 'Could not connect to the game server.', 3600);
     return;
-  }
+  } finally { busy = false; }
   app.inputIds = new Set([clientId]); app.local = false;
   beginRace();
 }
@@ -2773,7 +2908,7 @@ function beginRace() {
 const menuToastRace = (t) => app.hud?.toast(t);
 function stopGame() {
   cancelAnimationFrame(app.raf);
-  app.session?.close(); app.session = null; app.match = null;
+  app.session?.close(); app.session = null; app.match = null; app.bots = null;
   app.hud?.destroy(); app.hud = null;
   app.q?.close(true); app.q = null; app.pit?.close(true); app.pit = null;
   app.magnet.active = false; sound.hum(0);
@@ -2792,8 +2927,13 @@ function frame(now) {
   const blocked = !!(app.q || app.pit || ui.querySelector('.dim:not(.out)'));
   if (blocked && app.magnet.active) app.magnet = { ...app.magnet, active: false };
   if (id) (app.session ? app.session.setMagnet(app.magnet) : m.setMagnet(id, app.magnet));
-  const events = app.session ? app.session.update(dt) : m.update(dt);
-  for (const ev of events) handleEvent(ev);
+  // bot turns run at double speed so you are not left waiting
+  const steps = app.bots && app.bots.active && m.phase === 'turn' ? 2 : 1;
+  for (let k = 0; k < steps && app.match === m; k++) {
+    app.bots?.update(dt);
+    const events = app.session ? app.session.update(dt) : m.update(dt);
+    for (const ev of events) handleEvent(ev);
+  }
   if (!app.match) return; // the game ended inside an event handler
   const snap = m.snapshot();
   // before the turn starts, show where to put the magnet down
@@ -2801,7 +2941,7 @@ function frame(now) {
   if (id && m.mode === 'turns' && m.phase === 'turn' && m.turn && !m.turn.started && !app.magnet.active) { const c0 = m.car(id), q = track.pointAt(c0.s + 0.04); hint = { x: q.x, y: q.y }; }
   try { renderer.draw(snap, { ids: [...app.inputIds], hint }); } catch (e) { console.warn(e); renderer.resize(); }
   const shownId = id || snap.currentId || [...app.inputIds][0] || snap.players[0].id;
-  app.hud.update(snap, shownId, track);
+  app.hud.update(snap, shownId, track, { me: app.inputIds.size === 1 ? [...app.inputIds][0] : null, mine: id });
   if (renderer.w !== app.placedW || renderer.h !== app.placedH) { app.placedW = renderer.w; app.placedH = renderer.h; app.hud.place(renderer); }
   const car = id ? m.car(id) : null;
   sound.hum(app.magnet.active && car ? Math.min(1, car.pullN / 0.6) : 0);
@@ -2809,7 +2949,7 @@ function frame(now) {
 function promptIfNeeded() {
   const m = app.match; if (!m || m.mode !== 'turns' || m.phase !== 'roll') return;
   const P = m.current;
-  if (app.inputIds.has(P.id)) app.hud.rollPrompt(P, app.local && m.order.length > 1);
+  if (app.inputIds.has(P.id)) app.hud.rollPrompt(P, app.local && !app.bots && m.order.length > 1);
   else app.hud.waiting(P);
 }
 function handleEvent(ev) {
@@ -2839,7 +2979,7 @@ function handleEvent(ev) {
         app.q?.close(true);
         const q = app.q = questionSheet(ev.view, { streak: P.streak, onAnswer: v => (app.session || app.match).answer(v) });
         q.drawId = ev.view.drawId;
-      } else hud.toast(`${P.name} is answering a ${ev.view.difficulty} card…`, 2600);
+      } else hud.toast(`${P.name} is answering ${ev.view.difficulty === 'easy' ? 'an' : 'a'} ${ev.view.difficulty} card…`, 2600);
       break;
     case 'answer':
       if (mine && app.q) {
@@ -2867,7 +3007,7 @@ function showResults(ranking) {
   app.q?.close(true); app.q = null;
   resultsSheet(snap, ranking, stats, {
     challengeDone: rec.challengeDone ? rec.challenge : null,
-    onAgain: app.local ? () => startLocal(m.order.map(id => ({ id, name: m.player(id).name, color: m.player(id).color }))) : null,
+    onAgain: app.local && app.lastLocal ? () => startLocal(app.lastLocal.players, { botLevel: app.lastLocal.botLevel }) : null,
     onHome: home,
   });
 }

@@ -1,5 +1,5 @@
 // Offline support: serves the game from cache, refreshing it in the background.
-const VERSION = 'mr-v6';
+const VERSION = 'mr-v10';
 const SHELL = [
  "./",
  "favicon.ico",
@@ -10,6 +10,7 @@ const SHELL = [
  "manifest.webmanifest",
  "src/config.js",
  "src/game/autodrive.js",
+ "src/game/bot.js",
  "src/game/match.js",
  "src/game/powerups.js",
  "src/game/profile.js",

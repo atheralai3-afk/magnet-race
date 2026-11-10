@@ -12,6 +12,7 @@ import { LocalTransport } from '../src/net/transport.js';
 import { Room } from '../src/net/room.js';
 import { Matchmaker } from '../src/net/matchmaking.js';
 import { NetSession } from '../src/net/session.js';
+import { BotBrain, makeBots } from '../src/game/bot.js';
 
 let pass = 0, fail = 0;
 const ok = (cond, name) => { if (cond) pass++; else { fail++; console.log('  ✗', name); } };
@@ -96,6 +97,35 @@ function autoplay(m, ids, { lead = 0.035, wrong = () => false } = {}) {
   ok(m.phase === 'over', '3-player turn game reaches the end'); ok(m.ranking[0].score >= m.ranking[1].score, 'ranking sorted by points');
   ok(m.log.some(e => e.type === 'lap' && e.bonus === 5), 'first finisher gets the lap bonus'); }
 { const m = new Match({ mode: 'duel', players: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], track, laps: 1, seed: 4 }); m.start(); autoplay(m, ['a', 'b']); ok(m.phase === 'over', 'duel ends'); }
+
+// ---------- bots
+{
+  const acc = {};
+  for (const level of ['easy', 'hard']) {
+    const rnd = rng(level === 'easy' ? 3 : 4);
+    const bots = makeBots(2, level, rnd), human = { id: 'p1', name: 'You' };
+    const m = new Match({ players: [human, ...bots], track, laps: 1, seed: 21 }); m.start();
+    const brain = new BotBrain(m, bots.map(b => b.id), level, rnd);
+    let k = 0;
+    for (let f = 0; f < 60 * 60 * 20 && m.phase !== 'over'; f++) {
+      brain.update(1 / 60);
+      // the "human" plays like the tests always do
+      if (m.current?.id === 'p1') {
+        if (m.phase === 'roll') m.roll();
+        if (m.phase === 'pitstop') { m.pitDone(2); m.setMagnet('p1', { x: 0, y: 0, active: false }); }
+        if (m.phase === 'question' && m.questions.has('p1')) { const v = m.question.view, l = m.deck.live.get(v.drawId); m.answer(v.type === 'num' ? l.q.answer : l.correctIndex); }
+        if (m.phase === 'turn') m.setMagnet('p1', autoMagnet(track, m.car('p1')));
+      }
+      m.update(1 / 60);
+    }
+    const ans = m.log.filter(e => e.type === 'answer' && e.playerId.startsWith('bot'));
+    acc[level] = ans.filter(e => e.correct).length / Math.max(1, ans.length);
+    ok(m.phase === 'over', `${level} bots play a whole race with a human`);
+    ok(m.log.some(e => e.type === 'dice' && e.playerId.startsWith('bot')) && m.log.some(e => e.type === 'turnGo' && e.playerId.startsWith('bot')), `${level} bots roll and drive`);
+    ok(ans.length > 0, `${level} bots answer cards`);
+  }
+  ok(makeBots(3, 'normal').every((b, i, a) => b.name.startsWith('Bot ') && a.findIndex(x => x.name === b.name) === i), 'bots get different names');
+}
 
 // ---------- networking over the in-memory transport
 {

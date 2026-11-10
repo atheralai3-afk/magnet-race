@@ -10,11 +10,12 @@ import { makeTransport, isOnline } from './net/transport.js';
 import { Room, PLAYER_COLORS } from './net/room.js';
 import { Matchmaker } from './net/matchmaking.js';
 import { NetSession } from './net/session.js';
+import { BotBrain, makeBots } from './game/bot.js';
 import { randomSeed } from './util/rng.js';
 import { h, clear } from './ui/dom.js';
 import { icon } from './ui/art.js';
 import { sound, haptic } from './ui/sound.js';
-import { homeScreen, tabBar, passSetupSheet, nameSheet, confirmSheet, rulesSheet, lobbySheet, searchingSheet, questionSheet, resultsSheet, Hud } from './ui/screens.js';
+import { homeScreen, tabBar, passSetupSheet, botSetupSheet, nameSheet, confirmSheet, rulesSheet, lobbySheet, searchingSheet, questionSheet, resultsSheet, Hud } from './ui/screens.js';
 import { pitStopSheet } from './ui/pitstop.js';
 import { labScreen } from './ui/lab.js';
 
@@ -83,14 +84,22 @@ function showTab(tab) {
   const prof = profile();
   app.content.append(homeScreen({
     online, prof, challenge: todaysChallenge(),
-    onSolo: () => startLocal([{ id: 'p1', name: prof.name || 'You', color: PLAYER_COLORS[0] }]),
-    onPass: () => passSetupSheet({ names: app.lastNames, onStart: players => { app.lastNames = players.map(p => p.name); startLocal(players); } }),
-    onCreateRoom: () => withName(n => openRoom({ name: n, isHost: true })),
-    onJoin: code => withName(n => openRoom({ name: n, code })),
-    onDuel: () => withName(findDuel),
+    onSolo: once(() => startLocal([{ id: 'p1', name: prof.name || 'You', color: PLAYER_COLORS[0] }])),
+    onBots: once(() => botSetupSheet({ count: app.botCount, level: app.botLevel, onStart: (count, level) => {
+      app.botCount = count; app.botLevel = level;
+      startLocal([{ id: 'p1', name: profile().name || 'You', color: PLAYER_COLORS[0] }, ...makeBots(count, level).map((b, i) => ({ ...b, color: PLAYER_COLORS[i + 1] }))], { botLevel: level });
+    } })),
+    onPass: once(() => passSetupSheet({ names: app.lastNames, onStart: players => { app.lastNames = players.map(p => p.name); startLocal(players); } })),
+    onCreateRoom: once(() => withName(n => openRoom({ name: n, isHost: true }))),
+    onJoin: once(code => withName(n => openRoom({ name: n, code }))),
+    onDuel: once(() => withName(findDuel)),
     onEditName: () => nameSheet({ title: 'Your name', sub: 'Shown on your car and to other players.', cta: 'Save', name: prof.name, onGo: n => { setName(n); showTab('play'); } }),
   }));
 }
+// One thing at a time: ignore taps while a sheet is open, a connection is being made, or a race is running.
+let busy = false;
+const sheetOpen = () => !!ui.querySelector('.dim:not(.out)');
+function once(fn) { return (...a) => { if (busy || sheetOpen() || app.state !== 'menu') return; fn(...a); }; }
 function withName(go) {
   const n = profile().name;
   if (n) return go(n);
@@ -98,17 +107,22 @@ function withName(go) {
 }
 
 // ------------------------------------------------------------------ local games
-function startLocal(players) {
+function startLocal(players, { botLevel = null } = {}) {
   stopGame();
   app.match = new Match({ mode: 'turns', players, track, laps: LAPS, seed: randomSeed() });
-  app.inputIds = new Set(players.map(p => p.id)); app.local = true;
+  const botIds = players.filter(p => p.bot).map(p => p.id);
+  app.bots = botIds.length ? new BotBrain(app.match, botIds, botLevel || players.find(p => p.bot).bot) : null;
+  app.lastLocal = { players, botLevel };
+  app.inputIds = new Set(players.filter(p => !p.bot).map(p => p.id)); app.local = true;
   app.match.start();
   beginRace();
 }
 
 // ------------------------------------------------------------------ online games
 async function openRoom({ name, code, isHost }) {
+  if (busy) return;
   let room = null, lobby = null;
+  busy = true; menuToast(isHost ? 'Creating your room…' : 'Joining ' + code + '…', 1600);
   try {
     const transport = await makeTransport(config, clientId);
     room = await new Room(transport, { name, code, isHost }).open();
@@ -128,8 +142,10 @@ async function openRoom({ name, code, isHost }) {
       else lobby.rerender();
     });
   } catch (e) { console.error(e); lobby?.close(true); room?.leave(); menuToast('Could not connect to the game server.'); }
+  finally { busy = false; }
 }
 async function findDuel(name) {
+  if (busy) return;
   let cancelled = false, mm = null;
   const search = searchingSheet({ me: name, onCancel: () => { cancelled = true; mm?.cancel(); } });
   try {
@@ -149,6 +165,7 @@ async function findDuel(name) {
 async function startNet(transport, code, start) {
   stopGame();
   app.session = new NetSession(transport, { code, start, track });
+  busy = true;
   try {
     app.match = await app.session.open({ onWaiting: names => menuToast('Waiting for ' + names.join(', ') + '…', 4000) });
   } catch (e) {
@@ -156,7 +173,7 @@ async function startNet(transport, code, start) {
     home();
     menuToast(e.message === 'opponent' ? 'Your opponent could not connect. Try Public Duel again.' : e.message === 'nobody' ? 'Nobody else joined the game.' : 'Could not connect to the game server.', 3600);
     return;
-  }
+  } finally { busy = false; }
   app.inputIds = new Set([clientId]); app.local = false;
   beginRace();
 }
@@ -185,7 +202,7 @@ function beginRace() {
 const menuToastRace = (t) => app.hud?.toast(t);
 function stopGame() {
   cancelAnimationFrame(app.raf);
-  app.session?.close(); app.session = null; app.match = null;
+  app.session?.close(); app.session = null; app.match = null; app.bots = null;
   app.hud?.destroy(); app.hud = null;
   app.q?.close(true); app.q = null; app.pit?.close(true); app.pit = null;
   app.magnet.active = false; sound.hum(0);
@@ -204,8 +221,13 @@ function frame(now) {
   const blocked = !!(app.q || app.pit || ui.querySelector('.dim:not(.out)'));
   if (blocked && app.magnet.active) app.magnet = { ...app.magnet, active: false };
   if (id) (app.session ? app.session.setMagnet(app.magnet) : m.setMagnet(id, app.magnet));
-  const events = app.session ? app.session.update(dt) : m.update(dt);
-  for (const ev of events) handleEvent(ev);
+  // bot turns run at double speed so you are not left waiting
+  const steps = app.bots && app.bots.active && m.phase === 'turn' ? 2 : 1;
+  for (let k = 0; k < steps && app.match === m; k++) {
+    app.bots?.update(dt);
+    const events = app.session ? app.session.update(dt) : m.update(dt);
+    for (const ev of events) handleEvent(ev);
+  }
   if (!app.match) return; // the game ended inside an event handler
   const snap = m.snapshot();
   // before the turn starts, show where to put the magnet down
@@ -213,7 +235,7 @@ function frame(now) {
   if (id && m.mode === 'turns' && m.phase === 'turn' && m.turn && !m.turn.started && !app.magnet.active) { const c0 = m.car(id), q = track.pointAt(c0.s + 0.04); hint = { x: q.x, y: q.y }; }
   try { renderer.draw(snap, { ids: [...app.inputIds], hint }); } catch (e) { console.warn(e); renderer.resize(); }
   const shownId = id || snap.currentId || [...app.inputIds][0] || snap.players[0].id;
-  app.hud.update(snap, shownId, track);
+  app.hud.update(snap, shownId, track, { me: app.inputIds.size === 1 ? [...app.inputIds][0] : null, mine: id });
   if (renderer.w !== app.placedW || renderer.h !== app.placedH) { app.placedW = renderer.w; app.placedH = renderer.h; app.hud.place(renderer); }
   const car = id ? m.car(id) : null;
   sound.hum(app.magnet.active && car ? Math.min(1, car.pullN / 0.6) : 0);
@@ -221,7 +243,7 @@ function frame(now) {
 function promptIfNeeded() {
   const m = app.match; if (!m || m.mode !== 'turns' || m.phase !== 'roll') return;
   const P = m.current;
-  if (app.inputIds.has(P.id)) app.hud.rollPrompt(P, app.local && m.order.length > 1);
+  if (app.inputIds.has(P.id)) app.hud.rollPrompt(P, app.local && !app.bots && m.order.length > 1);
   else app.hud.waiting(P);
 }
 function handleEvent(ev) {
@@ -251,7 +273,7 @@ function handleEvent(ev) {
         app.q?.close(true);
         const q = app.q = questionSheet(ev.view, { streak: P.streak, onAnswer: v => (app.session || app.match).answer(v) });
         q.drawId = ev.view.drawId;
-      } else hud.toast(`${P.name} is answering a ${ev.view.difficulty} card…`, 2600);
+      } else hud.toast(`${P.name} is answering ${ev.view.difficulty === 'easy' ? 'an' : 'a'} ${ev.view.difficulty} card…`, 2600);
       break;
     case 'answer':
       if (mine && app.q) {
@@ -279,7 +301,7 @@ function showResults(ranking) {
   app.q?.close(true); app.q = null;
   resultsSheet(snap, ranking, stats, {
     challengeDone: rec.challengeDone ? rec.challenge : null,
-    onAgain: app.local ? () => startLocal(m.order.map(id => ({ id, name: m.player(id).name, color: m.player(id).color }))) : null,
+    onAgain: app.local && app.lastLocal ? () => startLocal(app.lastLocal.players, { botLevel: app.lastLocal.botLevel }) : null,
     onHome: home,
   });
 }
