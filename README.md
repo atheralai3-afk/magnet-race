@@ -1,5 +1,7 @@
 # Magnet Race
 
+**Play it: https://magnet-race.vercel.app**
+
 A physics racing game: pull a steel car around the track with a magnet (your finger or mouse), without ever touching it. Answer physics cards on the way to score points. Made for a Cambridge IGCSE/AS physics project.
 
 ## Play
